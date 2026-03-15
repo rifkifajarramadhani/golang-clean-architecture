@@ -1,0 +1,9 @@
+app:
+  port: 8080
+
+database:
+  host: db
+  port: 3306
+  user: root
+  password: greygoose
+  name: db_name

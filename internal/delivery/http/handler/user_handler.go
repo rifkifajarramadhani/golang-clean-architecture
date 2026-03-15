@@ -2,15 +2,17 @@ package handler
 
 import (
 	"github.com/gofiber/fiber/v3"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/domain"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/usecase"
 )
 
 type UserHandler struct {
-	user domain.User
+	UseCase usecase.UserUsecase
 }
 
-func NewUserHandler() *UserHandler {
-	return &UserHandler{}
+func NewUserHandler(userUsecase *usecase.UserUsecase) *UserHandler {
+	return &UserHandler{
+		UseCase: *userUsecase,
+	}
 }
 
 func (h *UserHandler) GetUsers(c fiber.Ctx) error {
