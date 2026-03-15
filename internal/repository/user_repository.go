@@ -2,6 +2,7 @@ package repository
 
 import (
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/domain"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/models"
 	"gorm.io/gorm"
 )
 
@@ -14,7 +15,16 @@ func NewUserRepository(db *gorm.DB) *userRepository {
 }
 
 func (r *userRepository) Create(user *domain.User) error {
-	return r.db.Create(user).Error
+	model := models.User{
+		Username: user.Username,
+		Email:    user.Email,
+	}
+
+	if err := r.db.Create(&model).Error; err != nil {
+		return err
+	}
+
+	return nil
 }
 
 func (r *userRepository) GetAll() ([]*domain.User, error) {
