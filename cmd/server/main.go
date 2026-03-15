@@ -7,6 +7,7 @@ import (
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/delivery/http/router"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/database"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/logger"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/repository"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/usecase"
 )
@@ -17,6 +18,8 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
+	logger.Init()
+
 	db, err := database.NewConnection(config.Database.DSN)
 	if err != nil {
 		log.Fatalf("Failed to connect to database: %v", err)
@@ -25,7 +28,15 @@ func main() {
 	userRepo := repository.NewUserRepository(db)
 	userUsercase := usecase.NewUserUsecase(userRepo)
 
-	app := fiber.New()
+	app := fiber.New(fiber.Config{
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			logger.Logger.Println("Fiber error:", err)
+
+			return c.Status(500).JSON(fiber.Map{
+				"error": "Internal server error",
+			})
+		},
+	})
 
 	router.Setup(app, *userUsercase)
 

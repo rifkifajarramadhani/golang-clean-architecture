@@ -4,6 +4,7 @@ import (
 	"github.com/gofiber/fiber/v3"
 	dto "github.com/rifkifajarramadhani/golang-clean-architecture/internal/delivery/http/dto/user"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/domain"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/logger"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/usecase"
 )
 
@@ -40,10 +41,13 @@ func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 	user := domain.User{
 		Username: req.Username,
 		Email:    req.Email,
+		Password: req.Password,
 	}
 
 	err := h.userUsecase.CreateUser(&user)
 	if err != nil {
+		logger.Logger.Println("Error creating user:", err)
+
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{
 			"error": "Failed to create user",
 		})

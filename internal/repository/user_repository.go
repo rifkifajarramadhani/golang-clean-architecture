@@ -18,6 +18,7 @@ func (r *userRepository) Create(user *domain.User) error {
 	model := models.User{
 		Username: user.Username,
 		Email:    user.Email,
+		Password: user.Password,
 	}
 
 	if err := r.db.Create(&model).Error; err != nil {
