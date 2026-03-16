@@ -56,6 +56,10 @@ Default values in this project:
 - DB user: `root`
 - DB password: `greygoose`
 - DB name: `db_name`
+- JWT access secret: `super-secret-access-key-change-me`
+- JWT refresh secret: `super-secret-refresh-key-change-me`
+- Access token TTL: `15` minutes
+- Refresh token TTL: `168` hours
 
 ## Quick Start (Recommended: Docker)
 
@@ -91,7 +95,13 @@ docker compose logs db --tail=100
 ### 4) Test API
 
 ```bash
-curl http://localhost:8080/api/users
+curl -X POST http://localhost:8080/api/auth/register \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "username": "rifki",
+    "email": "rifki@example.com",
+    "password": "secret123"
+  }'
 ```
 
 ## Migration Commands
@@ -118,30 +128,43 @@ make migrate args='down 1'
 
 Base URL: `http://localhost:8080/api`
 
+- Public auth routes:
+- `POST /auth/register`
+- `POST /auth/login`
+- `POST /auth/refresh`
+- Protected routes (require `Authorization: Bearer <access_token>`):
+- `GET /auth/me`
 - `GET /users`
 - `GET /users/:id`
 - `POST /users`
 - `PUT /users/:id`
 - `DELETE /users/:id`
 
-### Create User Example
+### Login Example
 
 ```bash
-curl -X POST http://localhost:8080/api/users \
+curl -X POST http://localhost:8080/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{
-    "username": "rifki",
     "email": "rifki@example.com",
     "password": "secret123"
   }'
+```
+
+### Access Protected Endpoint Example
+
+```bash
+curl http://localhost:8080/api/auth/me \
+  -H "Authorization: Bearer <access_token>"
 ```
 
 ## Development Notes
 
 - API runs via Air using `.air.toml`.
 - Build target for Air is `./cmd/server` and binary output is `tmp/main`.
-- Password hashing is handled in `usecase` layer before repository insert.
-- At the moment, `POST /users` is wired to usecase/repository flow; other endpoints may still return placeholder responses depending on handler implementation.
+- Password hashing is handled in the `usecase` layer.
+- Refresh tokens are persisted as SHA-256 hashes in `refresh_tokens` table.
+- Existing `/users` routes are now JWT-protected.
 
 ## Troubleshooting
 

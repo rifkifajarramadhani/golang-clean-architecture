@@ -19,6 +19,13 @@ type Config struct {
 		Name     string `yaml:"name"`
 		DSN      string `yaml:"-"`
 	}
+
+	Auth struct {
+		JWTAccessSecret  string `yaml:"jwt_access_secret"`
+		JWTRefreshSecret string `yaml:"jwt_refresh_secret"`
+		AccessTTLMinutes int    `yaml:"access_ttl_minutes"`
+		RefreshTTLHours  int    `yaml:"refresh_ttl_hours"`
+	}
 }
 
 func Load() (*Config, error) {

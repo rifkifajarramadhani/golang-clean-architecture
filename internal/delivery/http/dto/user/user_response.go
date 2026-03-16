@@ -1,6 +1,7 @@
 package dto
 
 type RegisterUserResponse struct {
-	Username string `json:"name"`
+	ID       int    `json:"id"`
+	Username string `json:"username"`
 	Email    string `json:"email"`
 }
