@@ -13,3 +13,22 @@ auth:
   jwt_refresh_secret: super-secret-refresh-key-change-me
   access_ttl_minutes: 15
   refresh_ttl_hours: 168
+
+redis:
+  address: redis:6379
+  password: ""
+  db: 0
+
+queue:
+  driver: database
+  concurrency: 10
+  shutdown_seconds: 30
+  queues:
+    default: 3
+    maintenance: 1
+  database:
+    poll_interval_milliseconds: 500
+    reservation_seconds: 60
+
+scheduler:
+  timezone: UTC

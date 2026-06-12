@@ -1,7 +1,10 @@
 package main
 
 import (
+	"context"
 	"log"
+	"os/signal"
+	"syscall"
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
@@ -14,6 +17,9 @@ import (
 )
 
 func main() {
+	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
+	defer stop()
+
 	cfg, err := config.Load()
 	if err != nil {
 		log.Fatalf("Failed to load config: %v", err)
@@ -47,6 +53,13 @@ func main() {
 	router.Setup(app, userUsecase, authUsecase, jwtService)
 
 	port := cfg.App.Port
+	go func() {
+		<-ctx.Done()
+		if err := app.Shutdown(); err != nil {
+			log.Printf("Failed to gracefully stop server: %v", err)
+		}
+	}()
+
 	log.Printf("Server is running on port %s", port)
 	if err := app.Listen(":" + port); err != nil {
 		log.Fatalf("Failed to start server: %v", err)

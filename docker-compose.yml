@@ -1,22 +1,52 @@
 volumes:
   db_data:
+
 services:
-  backend:
+  server:
     build:
       context: .
       dockerfile: Dockerfile
+    command: air -c .air.toml
     ports:
       - "8080:8080"
     volumes:
       - .:/app
     environment:
-      - DB_HOST=db
-      - DB_PORT=3306
-      - DB_USER=root
-      - DB_PASSWORD=greygoose
-      - DB_NAME=db_name
+      DATABASE_HOST: db
     depends_on:
-      - db
+      db:
+        condition: service_healthy
+
+  worker:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: air -c .air.worker.toml
+    volumes:
+      - .:/app
+    environment:
+      DATABASE_HOST: db
+      QUEUE_DRIVER: ${QUEUE_DRIVER:-database}
+      REDIS_ADDRESS: redis:6379
+    depends_on:
+      db:
+        condition: service_healthy
+
+  scheduler:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: go run ./cmd/scheduler
+    volumes:
+      - .:/app
+    environment:
+      DATABASE_HOST: db
+      QUEUE_DRIVER: ${QUEUE_DRIVER:-database}
+      REDIS_ADDRESS: redis:6379
+    depends_on:
+      db:
+        condition: service_healthy
+
   db:
     image: mysql:latest
     container_name: mysql
@@ -28,3 +58,19 @@ services:
       MYSQL_DATABASE: db_name
     volumes:
       - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pgreygoose"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    profiles: ["redis"]
+    ports:
+      - "6379:6379"
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
