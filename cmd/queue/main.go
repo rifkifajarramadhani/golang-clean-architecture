@@ -5,8 +5,8 @@ import (
 	"os"
 
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/jobs"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/platform/config"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
 	"github.com/spf13/cobra"
 )
@@ -38,19 +38,23 @@ func statusCommand(factory inspectorFactory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer inspector.Close()
+			defer func() { _ = inspector.Close() }()
 			queues, err := inspector.Queues(cmd.Context())
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "QUEUE\tPENDING\tACTIVE\tSCHEDULED\tRETRY\tFAILED\tPROCESSED")
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), "QUEUE\tPENDING\tACTIVE\tSCHEDULED\tRETRY\tFAILED\tPROCESSED"); err != nil {
+				return err
+			}
 			for _, name := range queues {
 				info, err := inspector.Stats(cmd.Context(), name)
 				if err != nil {
 					return err
 				}
-				fmt.Fprintf(cmd.OutOrStdout(), "%s\t%d\t%d\t%d\t%d\t%d\t%d\n",
-					name, info.Pending, info.Active, info.Scheduled, info.Retry, info.Failed, info.Processed)
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\t%d\t%d\t%d\t%d\t%d\t%d\n",
+					name, info.Pending, info.Active, info.Scheduled, info.Retry, info.Failed, info.Processed); err != nil {
+					return err
+				}
 			}
 			return nil
 		},
@@ -66,21 +70,25 @@ func failedCommand(factory inspectorFactory) *cobra.Command {
 			if err != nil {
 				return err
 			}
-			defer inspector.Close()
+			defer func() { _ = inspector.Close() }()
 			queues, err := inspector.Queues(cmd.Context())
 			if err != nil {
 				return err
 			}
-			fmt.Fprintln(cmd.OutOrStdout(), "ID\tQUEUE\tTYPE\tRETRIES\tFAILED AT\tERROR")
+			if _, err := fmt.Fprintln(cmd.OutOrStdout(), "ID\tQUEUE\tTYPE\tRETRIES\tFAILED AT\tERROR"); err != nil {
+				return err
+			}
 			for _, name := range queues {
 				tasks, err := inspector.Failed(cmd.Context(), name, 100)
 				if err != nil {
 					return err
 				}
 				for _, task := range tasks {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%d/%d\t%s\t%s\n",
+					if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%d/%d\t%s\t%s\n",
 						task.ID, task.Queue, task.Type, task.Retried, task.MaxRetry,
-						task.LastFailedAt.Format("2006-01-02T15:04:05Z07:00"), task.LastError)
+						task.LastFailedAt.Format("2006-01-02T15:04:05Z07:00"), task.LastError); err != nil {
+						return err
+					}
 				}
 			}
 			return nil
@@ -111,7 +119,7 @@ func operateArchivedCommand(factory inspectorFactory, use, short string, operati
 			if err != nil {
 				return err
 			}
-			defer inspector.Close()
+			defer func() { _ = inspector.Close() }()
 			id := args[0]
 			if id != "all" && queueName == "" {
 				return fmt.Errorf("--queue is required when operating on one job")
@@ -131,8 +139,8 @@ func operateArchivedCommand(factory inspectorFactory, use, short string, operati
 				}
 				total += count
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Affected jobs: %d\n", total)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Affected jobs: %d\n", total)
+			return err
 		},
 	}
 	command.Flags().StringVar(&queueName, "queue", "", "Queue name")
@@ -149,19 +157,16 @@ func dispatchDemoCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			dispatcher, err := bootstrap.Dispatcher(cfg)
-			if err != nil {
-				return err
-			}
+			dispatcher := bootstrap.Dispatcher(cfg)
 			if closer, ok := dispatcher.(interface{ Close() error }); ok {
-				defer closer.Close()
+				defer func() { _ = closer.Close() }()
 			}
 			info, err := dispatcher.Dispatch(cmd.Context(), jobs.DemoLog{Message: message}, queue.DispatchOptions{Queue: "default", MaxRetry: 3})
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(cmd.OutOrStdout(), "Dispatched job %s to %s\n", info.ID, info.Queue)
-			return nil
+			_, err = fmt.Fprintf(cmd.OutOrStdout(), "Dispatched job %s to %s\n", info.ID, info.Queue)
+			return err
 		},
 	}
 	command.Flags().StringVar(&message, "message", "Hello from the queue", "Demo log message")
@@ -173,5 +178,5 @@ func newInspector() (queue.Inspector, error) {
 	if err != nil {
 		return nil, err
 	}
-	return bootstrap.Inspector(cfg)
+	return bootstrap.Inspector(cfg), nil
 }

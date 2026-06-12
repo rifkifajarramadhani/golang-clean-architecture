@@ -3,28 +3,31 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"os/signal"
 	"syscall"
 
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/platform/config"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/platform/logger"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatalf("load config: %v", err)
 	}
-	worker, err := bootstrap.Worker(cfg)
+	appLogger := logger.New(cfg)
+	worker, err := bootstrap.Worker(ctx, cfg, appLogger)
 	if err != nil {
-		log.Fatalf("Failed to build worker: %v", err)
+		appLogger.Error("build worker", "error", err)
+		os.Exit(1)
 	}
-	log.Printf("Worker is running with driver %s and queues: %v", cfg.Queue.Driver, cfg.Queue.Queues)
+	appLogger.Info("worker starting", "queues", cfg.Queue.Queues)
 	if err := worker.Run(ctx); err != nil {
-		log.Fatalf("Failed to start worker: %v", err)
+		appLogger.Error("worker stopped", "error", err)
+		os.Exit(1)
 	}
-	log.Println("Stopping worker")
 }

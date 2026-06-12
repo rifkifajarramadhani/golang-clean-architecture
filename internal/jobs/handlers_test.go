@@ -3,17 +3,21 @@ package jobs
 import (
 	"context"
 	"encoding/json"
+	"log/slog"
 	"testing"
 	"time"
 
 	appmail "github.com/rifkifajarramadhani/golang-clean-architecture/internal/mail"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/usecase"
 )
 
 type maintenanceRepositoryFake struct{}
 
 func (maintenanceRepositoryFake) DeleteExpiredOrRevokedRefreshTokens(context.Context, time.Time) (int64, error) {
+	return 0, nil
+}
+
+func (maintenanceRepositoryFake) CleanupRefreshTokens(context.Context, time.Time) (int64, error) {
 	return 0, nil
 }
 
@@ -28,7 +32,7 @@ func (f *mailTransportFake) Send(_ context.Context, message appmail.Message) err
 
 func TestDemoHandlerRejectsMalformedPayload(t *testing.T) {
 	registry := queue.NewHandlerRegistry()
-	if err := RegisterHandlers(registry, usecase.NewMaintenanceUsecase(maintenanceRepositoryFake{}), &mailTransportFake{}); err != nil {
+	if err := RegisterHandlers(registry, maintenanceRepositoryFake{}, &mailTransportFake{}, slog.Default()); err != nil {
 		t.Fatal(err)
 	}
 	handler := registry.Handlers()[TypeDemoLog]
@@ -39,7 +43,7 @@ func TestDemoHandlerRejectsMalformedPayload(t *testing.T) {
 
 func TestMailHandlerRejectsMalformedPayload(t *testing.T) {
 	registry := queue.NewHandlerRegistry()
-	if err := RegisterHandlers(registry, usecase.NewMaintenanceUsecase(maintenanceRepositoryFake{}), &mailTransportFake{}); err != nil {
+	if err := RegisterHandlers(registry, maintenanceRepositoryFake{}, &mailTransportFake{}, slog.Default()); err != nil {
 		t.Fatal(err)
 	}
 	if err := registry.Handlers()[appmail.TypeSend](context.Background(), json.RawMessage("{")); err == nil {
@@ -50,7 +54,7 @@ func TestMailHandlerRejectsMalformedPayload(t *testing.T) {
 func TestMailHandlerForwardsRenderedMessage(t *testing.T) {
 	transport := &mailTransportFake{}
 	registry := queue.NewHandlerRegistry()
-	if err := RegisterHandlers(registry, usecase.NewMaintenanceUsecase(maintenanceRepositoryFake{}), transport); err != nil {
+	if err := RegisterHandlers(registry, maintenanceRepositoryFake{}, transport, slog.Default()); err != nil {
 		t.Fatal(err)
 	}
 	payload, err := json.Marshal(appmail.SendJob{Message: appmail.Message{

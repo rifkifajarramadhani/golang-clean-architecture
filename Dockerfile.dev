@@ -1,0 +1,13 @@
+FROM golang:1.26.4-alpine3.23
+
+ARG AIR_VERSION=v1.64.5
+ARG MIGRATE_VERSION=v4.19.1
+WORKDIR /app
+ENV GOFLAGS="-buildvcs=false"
+RUN apk add --no-cache git ca-certificates tzdata build-base \
+    && go install github.com/air-verse/air@${AIR_VERSION} \
+    && go install -tags mysql github.com/golang-migrate/migrate/v4/cmd/migrate@${MIGRATE_VERSION}
+COPY go.mod go.sum ./
+RUN go mod download
+COPY . .
+CMD ["air", "-c", ".air.toml"]
