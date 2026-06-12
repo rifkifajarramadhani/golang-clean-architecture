@@ -26,10 +26,12 @@ services:
       - .:/app
     environment:
       DATABASE_HOST: db
-      QUEUE_DRIVER: ${QUEUE_DRIVER:-database}
+      QUEUE_DRIVER: ${QUEUE_DRIVER:-redis}
       REDIS_ADDRESS: redis:6379
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   scheduler:
@@ -41,10 +43,12 @@ services:
       - .:/app
     environment:
       DATABASE_HOST: db
-      QUEUE_DRIVER: ${QUEUE_DRIVER:-database}
+      QUEUE_DRIVER: ${QUEUE_DRIVER:-redis}
       REDIS_ADDRESS: redis:6379
     depends_on:
       db:
+        condition: service_healthy
+      redis:
         condition: service_healthy
 
   db:
@@ -66,7 +70,6 @@ services:
 
   redis:
     image: redis:7-alpine
-    profiles: ["redis"]
     ports:
       - "6379:6379"
     healthcheck:

@@ -65,11 +65,12 @@ Default values in this project:
 - JWT refresh secret: `super-secret-refresh-key-change-me`
 - Access token TTL: `15` minutes
 - Refresh token TTL: `168` hours
-- Queue driver: `database`
+- Queue driver: `redis`
 - Database queue poll interval: `500` milliseconds
 - Database queue reservation lease: `60` seconds
 
-The queue driver can be changed with `QUEUE_DRIVER=database` or `QUEUE_DRIVER=redis`.
+Redis is the default queue backend. The database queue remains available with
+`QUEUE_DRIVER=database`.
 
 ## Quick Start (Recommended: Docker)
 
@@ -84,8 +85,10 @@ This starts:
 - `worker` (configured queue worker with Air hot reload)
 - `scheduler` (long-running application scheduler)
 - `db` (MySQL)
+- `redis` (default queue backend)
 
-MySQL is the default queue backend, so Redis is not started by the default Compose command.
+MySQL remains the application database and is required by the API and queue job
+handlers.
 
 ### 2) Run migrations
 
@@ -106,6 +109,7 @@ docker compose logs server --tail=100
 docker compose logs worker --tail=100
 docker compose logs scheduler --tail=100
 docker compose logs db --tail=100
+docker compose logs redis --tail=100
 ```
 
 ### 4) Test API
@@ -153,24 +157,34 @@ make queue args='delete all'
 ```
 
 The worker, scheduler, schedule command, and queue command all use the configured
-`queue.driver`. Database mode requires migration `000003_create_queue_tables`.
+`queue.driver`. Redis is the default. Database mode requires migration
+`000003_create_queue_tables`.
 
 Database jobs support delayed processing, retries, handler timeouts, uniqueness,
 retained completed jobs, failed-job inspection, retry, and deletion. Queue
 weights and concurrency use the same configuration for both drivers.
 
-### Redis Queue Mode
+### Queue Backend Configuration
 
-Start Redis and select the Redis driver:
+Docker Compose starts Redis and selects it as the queue driver by default:
 
 ```bash
-QUEUE_DRIVER=redis docker compose --profile redis up -d --build
-QUEUE_DRIVER=redis REDIS_ADDRESS=localhost:6379 make queue args=status
+docker compose up -d --build
+REDIS_ADDRESS=localhost:6379 make queue args=status
 ```
 
 When running commands outside Compose, ensure `REDIS_ADDRESS` points to the
 Redis instance. Switching queue drivers does not transfer jobs already stored
 by the previous backend.
+
+To use the database-backed queue instead:
+
+```bash
+QUEUE_DRIVER=database docker compose up -d --build
+```
+
+Redis still starts in this mode, but worker, scheduler, schedule, and queue
+commands use MySQL for queued jobs.
 
 ## Scheduler Commands
 

@@ -98,7 +98,7 @@ func Load() (*Config, error) {
 func normalizeQueueConfig(queue *QueueConfig) error {
 	queue.Driver = strings.ToLower(strings.TrimSpace(queue.Driver))
 	if queue.Driver == "" {
-		queue.Driver = QueueDriverDatabase
+		queue.Driver = QueueDriverRedis
 	}
 	if queue.Driver != QueueDriverDatabase && queue.Driver != QueueDriverRedis {
 		return fmt.Errorf("unsupported queue driver %q", queue.Driver)
