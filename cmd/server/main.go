@@ -7,11 +7,13 @@ import (
 	"syscall"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/delivery/http/router"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/database"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/logger"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/security"
+	appmail "github.com/rifkifajarramadhani/golang-clean-architecture/internal/mail"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/repository"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/usecase"
 )
@@ -41,7 +43,18 @@ func main() {
 
 	userRepo := repository.NewUserRepository(db)
 	userUsecase := usecase.NewUserUsecase(userRepo)
-	authUsecase := usecase.NewAuthUsecase(userRepo, jwtService)
+	dispatcher, err := bootstrap.Dispatcher(cfg)
+	if err != nil {
+		log.Fatalf("Failed to build queue dispatcher: %v", err)
+	}
+	if closer, ok := dispatcher.(interface{ Close() error }); ok {
+		defer closer.Close()
+	}
+	mailer := appmail.NewMailer(appmail.Address{
+		Name:    cfg.Mail.FromName,
+		Address: cfg.Mail.FromAddress,
+	}, nil, dispatcher)
+	authUsecase := usecase.NewAuthUsecase(userRepo, jwtService, mailer)
 
 	app := fiber.New(fiber.Config{
 		ErrorHandler: func(c fiber.Ctx, err error) error {

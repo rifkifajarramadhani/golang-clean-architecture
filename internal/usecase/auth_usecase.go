@@ -1,13 +1,17 @@
 package usecase
 
 import (
+	"context"
 	"crypto/sha256"
 	"encoding/hex"
 	"errors"
+	"log"
 	"time"
 
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/domain"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/security"
+	appmail "github.com/rifkifajarramadhani/golang-clean-architecture/internal/mail"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
 )
 
 type AuthRepository interface {
@@ -24,6 +28,11 @@ type AuthRepository interface {
 type AuthUsecase struct {
 	repo         AuthRepository
 	tokenService *security.JWTService
+	mailer       MailQueuer
+}
+
+type MailQueuer interface {
+	Queue(context.Context, appmail.Mailable, appmail.QueueOptions) (*queue.JobInfo, error)
 }
 
 type AuthTokens struct {
@@ -33,8 +42,8 @@ type AuthTokens struct {
 	RefreshExpiresAt time.Time
 }
 
-func NewAuthUsecase(repo AuthRepository, tokenService *security.JWTService) *AuthUsecase {
-	return &AuthUsecase{repo: repo, tokenService: tokenService}
+func NewAuthUsecase(repo AuthRepository, tokenService *security.JWTService, mailer MailQueuer) *AuthUsecase {
+	return &AuthUsecase{repo: repo, tokenService: tokenService, mailer: mailer}
 }
 
 func (u *AuthUsecase) Register(user *domain.User) error {
@@ -60,7 +69,18 @@ func (u *AuthUsecase) Register(user *domain.User) error {
 	}
 	user.Password = hashedPassword
 
-	return u.repo.Create(user)
+	if err := u.repo.Create(user); err != nil {
+		return err
+	}
+	if u.mailer != nil {
+		if _, err := u.mailer.Queue(context.Background(), appmail.Welcome{
+			Username: user.Username,
+			Email:    user.Email,
+		}, appmail.QueueOptions{}); err != nil {
+			log.Printf("Failed to queue welcome email for user %d: %v", user.ID, err)
+		}
+	}
+	return nil
 }
 
 func (u *AuthUsecase) Login(email, password string) (*AuthTokens, error) {

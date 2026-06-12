@@ -7,6 +7,7 @@ import (
 	"github.com/hibiken/asynq"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/database"
+	mailinfra "github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/mail"
 	queueinfra "github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/queue"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/jobs"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
@@ -56,8 +57,9 @@ func Worker(cfg *config.Config) (queue.Worker, error) {
 	}
 	userRepo := repository.NewUserRepository(db)
 	maintenance := usecase.NewMaintenanceUsecase(userRepo)
+	mailTransport := mailinfra.NewSMTPTransport(cfg.Mail)
 	registry := queue.NewHandlerRegistry()
-	if err := jobs.RegisterHandlers(registry, maintenance); err != nil {
+	if err := jobs.RegisterHandlers(registry, maintenance, mailTransport); err != nil {
 		return nil, fmt.Errorf("register job handlers: %w", err)
 	}
 	switch cfg.Queue.Driver {

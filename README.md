@@ -9,6 +9,7 @@ Backend services boilerplate using Clean Architecture principles with independen
 - **Database:** MySQL 8 (Docker)
 - **Queue:** Configurable MySQL or Redis + Asynq
 - **Scheduler:** Application-defined cron schedules
+- **Mail:** Laravel-inspired mailables with SMTP and queued delivery
 - **ORM:** GORM
 - **Config:** Viper (`configs/config.yaml`)
 - **Migrations:** golang-migrate
@@ -66,6 +67,8 @@ Default values in this project:
 - Access token TTL: `15` minutes
 - Refresh token TTL: `168` hours
 - Queue driver: `redis`
+- SMTP host: `mailpit:1025`
+- Default sender: `Golang Clean Architecture <hello@example.com>`
 - Database queue poll interval: `500` milliseconds
 - Database queue reservation lease: `60` seconds
 
@@ -86,6 +89,7 @@ This starts:
 - `scheduler` (long-running application scheduler)
 - `db` (MySQL)
 - `redis` (default queue backend)
+- `mailpit` (local SMTP server and message inspector)
 
 MySQL remains the application database and is required by the API and queue job
 handlers.
@@ -110,7 +114,11 @@ docker compose logs worker --tail=100
 docker compose logs scheduler --tail=100
 docker compose logs db --tail=100
 docker compose logs redis --tail=100
+docker compose logs mailpit --tail=100
 ```
+
+Mailpit is available at [http://localhost:8025](http://localhost:8025). Registering
+a user queues a welcome email that the worker delivers to Mailpit.
 
 ### 4) Test API
 
@@ -210,6 +218,29 @@ make run-scheduler
 
 In production, supervise `cmd/server`, `cmd/worker`, and `cmd/scheduler` as separate services.
 
+## Mail
+
+Mailables define an envelope, rendered plain-text and HTML content, and optional
+attachments. `mail.Mailer` supports both immediate SMTP delivery and queued
+delivery:
+
+```go
+mailer.Send(ctx, mailable)
+mailer.Queue(ctx, mailable, mail.QueueOptions{})
+```
+
+Queued mail is fully rendered before dispatch and sent by the worker as a
+`mail:send` job. By default, it uses the `mail` queue, retries three times, and
+has a 30-second handler timeout.
+
+SMTP settings live under `mail` in `configs/config.yaml` and can be overridden
+with environment variables such as `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`,
+`MAIL_PASSWORD`, `MAIL_ENCRYPTION`, `MAIL_FROM_ADDRESS`, and `MAIL_FROM_NAME`.
+Supported encryption values are `none`, `starttls`, and `tls`.
+
+When running the application outside Docker Compose, use `MAIL_HOST=localhost`
+to connect to the local Mailpit container.
+
 ## API Endpoints
 
 Base URL: `http://localhost:8080/api`
@@ -249,7 +280,7 @@ curl http://localhost:8080/api/auth/me \
 - API runs via Air using `.air.toml`.
 - Worker runs via Air using `.air.worker.toml`.
 - Build target for Air is `./cmd/server` and binary output is `tmp/main`.
-- Configuration supports environment-variable overrides such as `DATABASE_HOST`, `QUEUE_DRIVER`, `QUEUE_DATABASE_POLL_INTERVAL_MILLISECONDS`, `QUEUE_DATABASE_RESERVATION_SECONDS`, and `REDIS_ADDRESS`.
+- Configuration supports environment-variable overrides such as `DATABASE_HOST`, `QUEUE_DRIVER`, `QUEUE_DATABASE_POLL_INTERVAL_MILLISECONDS`, `QUEUE_DATABASE_RESERVATION_SECONDS`, `REDIS_ADDRESS`, and `MAIL_HOST`.
 - Password hashing is handled in the `usecase` layer.
 - Refresh tokens are persisted as SHA-256 hashes in `refresh_tokens` table.
 - Existing `/users` routes are now JWT-protected.
