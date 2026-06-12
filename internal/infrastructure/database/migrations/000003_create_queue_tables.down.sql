@@ -1,0 +1,3 @@
+DROP TABLE IF EXISTS queue_locks;
+DROP TABLE IF EXISTS queue_stats;
+DROP TABLE IF EXISTS queue_jobs;

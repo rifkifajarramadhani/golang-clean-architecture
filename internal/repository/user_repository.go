@@ -1,6 +1,7 @@
 package repository
 
 import (
+	"context"
 	"time"
 
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/domain"
@@ -10,6 +11,13 @@ import (
 
 type userRepository struct {
 	db *gorm.DB
+}
+
+func (r *userRepository) DeleteExpiredOrRevokedRefreshTokens(ctx context.Context, before time.Time) (int64, error) {
+	result := r.db.WithContext(ctx).
+		Where("expires_at < ? OR (revoked_at IS NOT NULL AND revoked_at < ?)", before, before).
+		Delete(&models.RefreshToken{})
+	return result.RowsAffected, result.Error
 }
 
 func NewUserRepository(db *gorm.DB) *userRepository {

@@ -2,43 +2,85 @@ package config
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/viper"
 )
 
+const (
+	QueueDriverDatabase = "database"
+	QueueDriverRedis    = "redis"
+)
+
+type AppConfig struct {
+	Port string `mapstructure:"port"`
+}
+
+type DatabaseConfig struct {
+	Host     string `mapstructure:"host"`
+	Port     int    `mapstructure:"port"`
+	User     string `mapstructure:"user"`
+	Password string `mapstructure:"password"`
+	Name     string `mapstructure:"name"`
+	DSN      string `mapstructure:"-"`
+}
+
+type AuthConfig struct {
+	JWTAccessSecret  string `mapstructure:"jwt_access_secret"`
+	JWTRefreshSecret string `mapstructure:"jwt_refresh_secret"`
+	AccessTTLMinutes int    `mapstructure:"access_ttl_minutes"`
+	RefreshTTLHours  int    `mapstructure:"refresh_ttl_hours"`
+}
+
+type RedisConfig struct {
+	Address  string `mapstructure:"address"`
+	Password string `mapstructure:"password"`
+	DB       int    `mapstructure:"db"`
+}
+
+type QueueConfig struct {
+	Driver          string              `mapstructure:"driver"`
+	Concurrency     int                 `mapstructure:"concurrency"`
+	ShutdownSeconds int                 `mapstructure:"shutdown_seconds"`
+	Queues          map[string]int      `mapstructure:"queues"`
+	Database        DatabaseQueueConfig `mapstructure:"database"`
+}
+
+type DatabaseQueueConfig struct {
+	PollIntervalMilliseconds int `mapstructure:"poll_interval_milliseconds"`
+	ReservationSeconds       int `mapstructure:"reservation_seconds"`
+}
+
+type SchedulerConfig struct {
+	Timezone string `mapstructure:"timezone"`
+}
+
 type Config struct {
-	App struct {
-		Port string `yaml:"port"`
-	}
-
-	Database struct {
-		Host     string `yaml:"host"`
-		Port     int    `yaml:"port"`
-		User     string `yaml:"user"`
-		Password string `yaml:"password"`
-		Name     string `yaml:"name"`
-		DSN      string `yaml:"-"`
-	}
-
-	Auth struct {
-		JWTAccessSecret  string `yaml:"jwt_access_secret"`
-		JWTRefreshSecret string `yaml:"jwt_refresh_secret"`
-		AccessTTLMinutes int    `yaml:"access_ttl_minutes"`
-		RefreshTTLHours  int    `yaml:"refresh_ttl_hours"`
-	}
+	App       AppConfig       `mapstructure:"app"`
+	Database  DatabaseConfig  `mapstructure:"database"`
+	Auth      AuthConfig      `mapstructure:"auth"`
+	Redis     RedisConfig     `mapstructure:"redis"`
+	Queue     QueueConfig     `mapstructure:"queue"`
+	Scheduler SchedulerConfig `mapstructure:"scheduler"`
 }
 
 func Load() (*Config, error) {
-	viper.SetConfigName("config")
-	viper.SetConfigType("yaml")
-	viper.AddConfigPath("./configs")
+	instance := viper.New()
+	instance.SetConfigName("config")
+	instance.SetConfigType("yaml")
+	instance.AddConfigPath("./configs")
+	instance.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
+	instance.AutomaticEnv()
 
-	if err := viper.ReadInConfig(); err != nil {
+	if err := instance.ReadInConfig(); err != nil {
 		return nil, err
 	}
 
 	var config Config
-	if err := viper.Unmarshal(&config); err != nil {
+	if err := instance.Unmarshal(&config); err != nil {
+		return nil, err
+	}
+	if err := normalizeQueueConfig(&config.Queue); err != nil {
 		return nil, err
 	}
 
@@ -51,4 +93,27 @@ func Load() (*Config, error) {
 	)
 
 	return &config, nil
+}
+
+func normalizeQueueConfig(queue *QueueConfig) error {
+	queue.Driver = strings.ToLower(strings.TrimSpace(queue.Driver))
+	if queue.Driver == "" {
+		queue.Driver = QueueDriverRedis
+	}
+	if queue.Driver != QueueDriverDatabase && queue.Driver != QueueDriverRedis {
+		return fmt.Errorf("unsupported queue driver %q", queue.Driver)
+	}
+	if queue.Concurrency <= 0 {
+		queue.Concurrency = 1
+	}
+	if queue.ShutdownSeconds <= 0 {
+		queue.ShutdownSeconds = 30
+	}
+	if queue.Database.PollIntervalMilliseconds <= 0 {
+		queue.Database.PollIntervalMilliseconds = 500
+	}
+	if queue.Database.ReservationSeconds <= 0 {
+		queue.Database.ReservationSeconds = 60
+	}
+	return nil
 }

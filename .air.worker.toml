@@ -2,8 +2,8 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/main ./cmd/server"
-entrypoint = ["./tmp/main"]
+cmd = "go build -o ./tmp/worker ./cmd/worker"
+entrypoint = ["./tmp/worker"]
 include_ext = ["go"]
 exclude_dir = ["tmp", "vendor"]
 delay = 1000
