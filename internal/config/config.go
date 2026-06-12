@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	stdmail "net/mail"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -10,6 +11,10 @@ import (
 const (
 	QueueDriverDatabase = "database"
 	QueueDriverRedis    = "redis"
+
+	MailEncryptionNone     = "none"
+	MailEncryptionStartTLS = "starttls"
+	MailEncryptionTLS      = "tls"
 )
 
 type AppConfig struct {
@@ -55,6 +60,16 @@ type SchedulerConfig struct {
 	Timezone string `mapstructure:"timezone"`
 }
 
+type MailConfig struct {
+	Host        string `mapstructure:"host"`
+	Port        int    `mapstructure:"port"`
+	Username    string `mapstructure:"username"`
+	Password    string `mapstructure:"password"`
+	Encryption  string `mapstructure:"encryption"`
+	FromAddress string `mapstructure:"from_address"`
+	FromName    string `mapstructure:"from_name"`
+}
+
 type Config struct {
 	App       AppConfig       `mapstructure:"app"`
 	Database  DatabaseConfig  `mapstructure:"database"`
@@ -62,6 +77,7 @@ type Config struct {
 	Redis     RedisConfig     `mapstructure:"redis"`
 	Queue     QueueConfig     `mapstructure:"queue"`
 	Scheduler SchedulerConfig `mapstructure:"scheduler"`
+	Mail      MailConfig      `mapstructure:"mail"`
 }
 
 func Load() (*Config, error) {
@@ -83,6 +99,9 @@ func Load() (*Config, error) {
 	if err := normalizeQueueConfig(&config.Queue); err != nil {
 		return nil, err
 	}
+	if err := normalizeMailConfig(&config.Mail); err != nil {
+		return nil, err
+	}
 
 	config.Database.DSN = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		config.Database.User,
@@ -93,6 +112,36 @@ func Load() (*Config, error) {
 	)
 
 	return &config, nil
+}
+
+func normalizeMailConfig(mail *MailConfig) error {
+	mail.Host = strings.TrimSpace(mail.Host)
+	if mail.Host == "" {
+		mail.Host = "localhost"
+	}
+	if mail.Port <= 0 {
+		mail.Port = 1025
+	}
+	mail.Encryption = strings.ToLower(strings.TrimSpace(mail.Encryption))
+	if mail.Encryption == "" {
+		mail.Encryption = MailEncryptionNone
+	}
+	switch mail.Encryption {
+	case MailEncryptionNone, MailEncryptionStartTLS, MailEncryptionTLS:
+	default:
+		return fmt.Errorf("unsupported mail encryption %q", mail.Encryption)
+	}
+	mail.FromAddress = strings.TrimSpace(mail.FromAddress)
+	if mail.FromAddress == "" {
+		mail.FromAddress = "hello@example.com"
+	}
+	if _, err := stdmail.ParseAddress(mail.FromAddress); err != nil {
+		return fmt.Errorf("invalid mail from address: %w", err)
+	}
+	if strings.TrimSpace(mail.FromName) == "" {
+		mail.FromName = "Golang Clean Architecture"
+	}
+	return nil
 }
 
 func normalizeQueueConfig(queue *QueueConfig) error {

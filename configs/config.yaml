@@ -25,6 +25,7 @@ queue:
   shutdown_seconds: 30
   queues:
     default: 3
+    mail: 2
     maintenance: 1
   database:
     poll_interval_milliseconds: 500
@@ -32,3 +33,12 @@ queue:
 
 scheduler:
   timezone: UTC
+
+mail:
+  host: mailpit
+  port: 1025
+  username: ""
+  password: ""
+  encryption: none
+  from_address: hello@example.com
+  from_name: Golang Clean Architecture

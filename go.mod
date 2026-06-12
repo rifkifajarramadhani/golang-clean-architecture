@@ -5,6 +5,7 @@ go 1.26.1
 require (
 	github.com/gofiber/fiber/v3 v3.1.0
 	github.com/hibiken/asynq v0.26.0
+	github.com/jordan-wright/email v4.0.1-0.20210109023952-943e75fe5223+incompatible
 	github.com/robfig/cron/v3 v3.0.1
 	github.com/spf13/cobra v1.10.2
 	github.com/spf13/viper v1.21.0
