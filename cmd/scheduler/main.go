@@ -8,7 +8,8 @@ import (
 	"time"
 
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/platform/config"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/platform/logger"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/scheduler"
 )
 
@@ -24,16 +25,14 @@ func main() {
 	if err != nil {
 		log.Fatalf("Failed to build schedule registry: %v", err)
 	}
-	dispatcher, err := bootstrap.Dispatcher(cfg)
-	if err != nil {
-		log.Fatalf("Failed to build queue dispatcher: %v", err)
-	}
+	appLogger := logger.New(cfg)
+	dispatcher := bootstrap.Dispatcher(cfg)
 	if closer, ok := dispatcher.(interface{ Close() error }); ok {
-		defer closer.Close()
+		defer func() { _ = closer.Close() }()
 	}
 	runner := scheduler.NewRunner(registry, dispatcher)
 
-	log.Printf("Scheduler is running with timezone %s and queue driver %s", cfg.Scheduler.Timezone, cfg.Queue.Driver)
+	appLogger.Info("scheduler starting", "timezone", cfg.Scheduler.Timezone)
 	for {
 		now := time.Now()
 		next := now.Truncate(time.Minute).Add(time.Minute)
@@ -41,11 +40,11 @@ func main() {
 		select {
 		case <-ctx.Done():
 			timer.Stop()
-			log.Println("Stopping scheduler")
+			appLogger.Info("scheduler stopping")
 			return
 		case tick := <-timer.C:
 			if err := runner.Run(ctx, tick); err != nil {
-				log.Printf("Scheduler tick failed: %v", err)
+				appLogger.Error("scheduler tick failed", "error", err)
 			}
 		}
 	}

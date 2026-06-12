@@ -2,12 +2,11 @@ package main
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"time"
 
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/platform/config"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/scheduler"
 	"github.com/spf13/cobra"
 )
@@ -34,16 +33,22 @@ func newRootCommand() *cobra.Command {
 					return err
 				}
 				now := time.Now()
-				fmt.Fprintf(cmd.OutOrStdout(), "Default timezone: %s\n", cfg.Scheduler.Timezone)
-				fmt.Fprintln(cmd.OutOrStdout(), "NAME\tCRON\tTIMEZONE\tQUEUE\tNEXT RUN")
+				if _, err := fmt.Fprintf(cmd.OutOrStdout(), "Default timezone: %s\n", cfg.Scheduler.Timezone); err != nil {
+					return err
+				}
+				if _, err := fmt.Fprintln(cmd.OutOrStdout(), "NAME\tCRON\tTIMEZONE\tQUEUE\tNEXT RUN"); err != nil {
+					return err
+				}
 				for _, definition := range registry.Definitions() {
-					fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\t%s\n",
+					if _, err := fmt.Fprintf(cmd.OutOrStdout(), "%s\t%s\t%s\t%s\t%s\n",
 						definition.Name,
 						definition.Cron,
 						definition.Timezone,
 						definition.DispatchOptions.Queue,
 						registry.Next(definition, now).Format(time.RFC3339),
-					)
+					); err != nil {
+						return err
+					}
 				}
 				return nil
 			},
@@ -56,18 +61,15 @@ func newRootCommand() *cobra.Command {
 				if err != nil {
 					return err
 				}
-				dispatcher, err := bootstrap.Dispatcher(cfg)
-				if err != nil {
-					return err
-				}
+				dispatcher := bootstrap.Dispatcher(cfg)
 				if closer, ok := dispatcher.(interface{ Close() error }); ok {
-					defer closer.Close()
+					defer func() { _ = closer.Close() }()
 				}
 				if err := scheduler.NewRunner(registry, dispatcher).Run(cmd.Context(), time.Now()); err != nil {
 					return err
 				}
-				log.Println("Schedule tick completed")
-				return nil
+				_, err = fmt.Fprintln(cmd.OutOrStdout(), "Schedule tick completed")
+				return err
 			},
 		},
 	)

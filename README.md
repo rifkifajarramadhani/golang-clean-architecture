@@ -1,326 +1,123 @@
-# Golang Clean Architecture
+# Go Service Boilerplate
 
-Backend services boilerplate using Clean Architecture principles with independently deployable HTTP, queue worker, and scheduler processes.
+Production-oriented Go service boilerplate using feature-first Clean Architecture. It ships an HTTP API, Redis-backed queue worker, scheduler, SMTP mail delivery, MySQL migrations, container images, health checks, metrics, and CI.
 
-## Tech Stack
-
-- **Language:** Go 1.26
-- **HTTP Framework:** Fiber v3
-- **Database:** MySQL 8 (Docker)
-- **Queue:** Configurable MySQL or Redis + Asynq
-- **Scheduler:** Application-defined cron schedules
-- **Mail:** Laravel-inspired mailables with SMTP and queued delivery
-- **ORM:** GORM
-- **Config:** Viper (`configs/config.yaml`)
-- **Migrations:** golang-migrate
-- **Hot Reload (Dev):** Air
-- **Containerization:** Docker + Docker Compose
-
-## Project Structure
+## Architecture
 
 ```text
-.
-├── cmd/
-│   ├── server/                 # API entrypoint
-│   ├── worker/                 # Queue worker service
-│   ├── scheduler/              # Long-running scheduler service
-│   ├── queue/                  # Queue operations CLI
-│   └── schedule/               # Schedule operations CLI
-├── configs/
-│   └── config.yaml             # App + DB config
-├── internal/
-│   ├── config/                 # Config loader
-│   ├── delivery/http/          # HTTP handlers, routers, DTOs
-│   ├── domain/                 # Domain entities
-│   ├── infrastructure/         # DB connection, logger, migrations
-│   ├── models/                 # Database models
-│   ├── repository/             # Repository implementation
-│   └── usecase/                # Business logic
-├── docker-compose.yml
-├── Dockerfile
-├── Makefile
-└── .air.toml
+cmd/                         independently deployable processes and CLI tools
+internal/identity/           identity domain, application ports/service, adapters, HTTP delivery
+internal/platform/           config, database, HTTP, security, Redis, SMTP, and logging adapters
+internal/queue/              backend-neutral job contracts
+internal/scheduler/          schedule contracts and runner
+internal/mail/               mail contracts and templates
 ```
 
-## Prerequisites
+Application code depends on feature-owned interfaces. Request contexts flow from HTTP delivery through application services and repositories. Redis/Asynq is the only supported queue backend.
 
-- Docker
-- Docker Compose
-- Make (optional, for migration shortcuts)
+## Local Development
 
-## Configuration
-
-Current configuration file:
-
-- `configs/config.yaml`
-
-Default values in this project:
-
-- App port: `8080`
-- DB host: `db`
-- DB port: `3306`
-- DB user: `root`
-- DB password: `greygoose`
-- DB name: `db_name`
-- JWT access secret: `super-secret-access-key-change-me`
-- JWT refresh secret: `super-secret-refresh-key-change-me`
-- Access token TTL: `15` minutes
-- Refresh token TTL: `168` hours
-- Queue driver: `redis`
-- SMTP host: `mailpit:1025`
-- Default sender: `Golang Clean Architecture <hello@example.com>`
-- Database queue poll interval: `500` milliseconds
-- Database queue reservation lease: `60` seconds
-
-Redis is the default queue backend. The database queue remains available with
-`QUEUE_DRIVER=database`.
-
-## Quick Start (Recommended: Docker)
-
-### 1) Start services
+Requirements: Docker, Docker Compose, and optionally Make.
 
 ```bash
+cp .env.example .env
+# Replace every placeholder in .env.
 docker compose up -d --build
-```
-
-This starts:
-- `server` (Go API with Air hot reload)
-- `worker` (configured queue worker with Air hot reload)
-- `scheduler` (long-running application scheduler)
-- `db` (MySQL)
-- `redis` (default queue backend)
-- `mailpit` (local SMTP server and message inspector)
-
-MySQL remains the application database and is required by the API and queue job
-handlers.
-
-### 2) Run migrations
-
-```bash
 make migrate args=up
 ```
 
-Alternative without `make`:
+Services:
 
-```bash
-docker compose exec server migrate -database 'mysql://root:greygoose@tcp(db:3306)/db_name' -path internal/infrastructure/database/migrations up
+- API: `http://localhost:8080`
+- Mailpit: `http://localhost:8025`
+- MySQL: `localhost:3306`
+- Redis: `localhost:6379`
+
+Configuration is environment-first. `configs/config.yaml` contains non-secret development defaults; JWT secrets and database credentials must come from environment variables. Production startup rejects missing credentials, weak JWT secrets, and invalid limits.
+
+If an existing development volume was created by `mysql:latest` 9.x, export or remove that development volume before starting the pinned MySQL 8.4 service; MySQL does not support that major-version downgrade in place.
+
+## HTTP API
+
+All application routes are versioned under `/api/v1`.
+
+```text
+POST /api/v1/auth/register
+POST /api/v1/auth/login
+POST /api/v1/auth/refresh
+POST /api/v1/auth/logout
+GET  /api/v1/me
+
+GET  /health/live
+GET  /health/ready
+GET  /metrics
 ```
 
-### 3) Check logs
+The default API intentionally contains no cross-user administration endpoints. Add those only with explicit project-specific authorization.
+
+Registration example:
 
 ```bash
-docker compose logs server --tail=100
-docker compose logs worker --tail=100
-docker compose logs scheduler --tail=100
-docker compose logs db --tail=100
-docker compose logs redis --tail=100
-docker compose logs mailpit --tail=100
-```
-
-Mailpit is available at [http://localhost:8025](http://localhost:8025). Registering
-a user queues a welcome email that the worker delivers to Mailpit.
-
-### 4) Test API
-
-```bash
-curl -X POST http://localhost:8080/api/auth/register \
+curl -X POST http://localhost:8080/api/v1/auth/register \
   -H 'Content-Type: application/json' \
-  -d '{
-    "username": "rifki",
-    "email": "rifki@example.com",
-    "password": "secret123"
-  }'
+  -d '{"username":"example","email":"example@example.com","password":"a-long-local-password"}'
 ```
 
-## Migration Commands
+Refresh tokens are stored as hashes, atomically rotated on refresh, single-use, and revocable through logout. Welcome mail dispatch is best-effort and does not roll back registration.
 
-Create a new migration:
+## Commands
 
 ```bash
+make check
+make test-unit
+make test-race
+make test-integration
+make lint
+make vuln
+make build
+make prod-images
+
 make migrate-create name=create_something
-```
-
-Apply migrations:
-
-```bash
 make migrate args=up
-```
-
-Rollback one step:
-
-```bash
 make migrate args='down 1'
-```
 
-## Queue Commands
-
-```bash
-make queue args='dispatch-demo --message="Hello from the queue"'
 make queue args=status
 make queue args=failed
-make queue args='retry <job-id> --queue=default'
 make queue args='retry all'
-make queue args='delete <job-id> --queue=default'
-make queue args='delete all'
-```
-
-The worker, scheduler, schedule command, and queue command all use the configured
-`queue.driver`. Redis is the default. Database mode requires migration
-`000003_create_queue_tables`.
-
-Database jobs support delayed processing, retries, handler timeouts, uniqueness,
-retained completed jobs, failed-job inspection, retry, and deletion. Queue
-weights and concurrency use the same configuration for both drivers.
-
-### Queue Backend Configuration
-
-Docker Compose starts Redis and selects it as the queue driver by default:
-
-```bash
-docker compose up -d --build
-REDIS_ADDRESS=localhost:6379 make queue args=status
-```
-
-When running commands outside Compose, ensure `REDIS_ADDRESS` points to the
-Redis instance. Switching queue drivers does not transfer jobs already stored
-by the previous backend.
-
-To use the database-backed queue instead:
-
-```bash
-QUEUE_DRIVER=database docker compose up -d --build
-```
-
-Redis still starts in this mode, but worker, scheduler, schedule, and queue
-commands use MySQL for queued jobs.
-
-## Scheduler Commands
-
-Schedules are registered in application code and only enqueue durable jobs.
-
-```bash
 make schedule args=list
 make schedule args=run
 ```
 
-The default schedule queues refresh-token cleanup daily at midnight UTC. Deterministic task IDs prevent duplicate dispatches for the same schedule and minute.
-
-## Service Processes
-
-Build or run each process independently:
+Integration tests require migrated MySQL and Redis:
 
 ```bash
-make build
-make run-server
-make run-worker
-make run-scheduler
+export IDENTITY_TEST_MYSQL_DSN='app:password@tcp(127.0.0.1:3306)/app?parseTime=true'
+export REDIS_ADDRESS='127.0.0.1:6379'
+go test -tags=integration ./...
 ```
 
-In production, supervise `cmd/server`, `cmd/worker`, and `cmd/scheduler` as separate services.
+## Deployment
 
-## Mail
-
-Mailables define an envelope, rendered plain-text and HTML content, and optional
-attachments. `mail.Mailer` supports both immediate SMTP delivery and queued
-delivery:
-
-```go
-mailer.Send(ctx, mailable)
-mailer.Queue(ctx, mailable, mail.QueueOptions{})
-```
-
-Queued mail is fully rendered before dispatch and sent by the worker as a
-`mail:send` job. By default, it uses the `mail` queue, retries three times, and
-has a 30-second handler timeout.
-
-SMTP settings live under `mail` in `configs/config.yaml` and can be overridden
-with environment variables such as `MAIL_HOST`, `MAIL_PORT`, `MAIL_USERNAME`,
-`MAIL_PASSWORD`, `MAIL_ENCRYPTION`, `MAIL_FROM_ADDRESS`, and `MAIL_FROM_NAME`.
-Supported encryption values are `none`, `starttls`, and `tls`.
-
-When running the application outside Docker Compose, use `MAIL_HOST=localhost`
-to connect to the local Mailpit container.
-
-## API Endpoints
-
-Base URL: `http://localhost:8080/api`
-
-- Public auth routes:
-- `POST /auth/register`
-- `POST /auth/login`
-- `POST /auth/refresh`
-- Protected routes (require `Authorization: Bearer <access_token>`):
-- `GET /auth/me`
-- `GET /users`
-- `GET /users/:id`
-- `POST /users`
-- `PUT /users/:id`
-- `DELETE /users/:id`
-
-### Login Example
+`Dockerfile.dev` contains pinned development tools. `Dockerfile` is a multi-stage production build that emits a minimal non-root image:
 
 ```bash
-curl -X POST http://localhost:8080/api/auth/login \
-  -H 'Content-Type: application/json' \
-  -d '{
-    "email": "rifki@example.com",
-    "password": "secret123"
-  }'
+docker build --build-arg TARGET=server -t service-server .
+docker build --build-arg TARGET=worker -t service-worker .
+docker build --build-arg TARGET=scheduler -t service-scheduler .
 ```
 
-### Access Protected Endpoint Example
+Deploy server, worker, and scheduler independently. Configure container health probes against `/health/live` and `/health/ready`.
+
+## Start A New Project
+
+Run the initializer once in a fresh copy:
 
 ```bash
-curl http://localhost:8080/api/auth/me \
-  -H "Authorization: Bearer <access_token>"
+go run ./cmd/boilerplate-init \
+  --module github.com/example/my-service \
+  --service my-service \
+  --database my_service \
+  --dry-run
 ```
 
-## Development Notes
-
-- API runs via Air using `.air.toml`.
-- Worker runs via Air using `.air.worker.toml`.
-- Build target for Air is `./cmd/server` and binary output is `tmp/main`.
-- Configuration supports environment-variable overrides such as `DATABASE_HOST`, `QUEUE_DRIVER`, `QUEUE_DATABASE_POLL_INTERVAL_MILLISECONDS`, `QUEUE_DATABASE_RESERVATION_SECONDS`, `REDIS_ADDRESS`, and `MAIL_HOST`.
-- Password hashing is handled in the `usecase` layer.
-- Refresh tokens are persisted as SHA-256 hashes in `refresh_tokens` table.
-- Existing `/users` routes are now JWT-protected.
-
-## Troubleshooting
-
-### MySQL Error 1130 (host not allowed)
-
-If you see:
-
-`Host '172.x.x.x' is not allowed to connect to this MySQL server`
-
-Run:
-
-```bash
-docker compose exec db mysql -uroot -pgreygoose -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'greygoose'; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION; FLUSH PRIVILEGES;"
-docker compose restart server
-```
-
-If you can reset local DB data completely:
-
-```bash
-docker compose down -v
-docker compose up -d --build
-make migrate args=up
-```
-
-### Server not building `tmp/main`
-
-Ensure `.air.toml` has:
-
-- `cmd = "go build -o ./tmp/main ./cmd/server"`
-- `entrypoint = ["./tmp/main"]`
-
-Then restart the server:
-
-```bash
-docker compose restart server
-```
-
-## License
-
-No license file is currently defined in this repository.
+Remove `--dry-run` after reviewing the affected files. The command updates the Go module path, service name, and default database metadata while skipping `.git`, `.env`, and binary files.

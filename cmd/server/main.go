@@ -3,78 +3,48 @@ package main
 import (
 	"context"
 	"log"
+	"os"
 	"os/signal"
 	"syscall"
+	"time"
 
-	"github.com/gofiber/fiber/v3"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/delivery/http/router"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/database"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/logger"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/infrastructure/security"
-	appmail "github.com/rifkifajarramadhani/golang-clean-architecture/internal/mail"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/repository"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/usecase"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/platform/config"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/platform/httpserver"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/platform/logger"
 )
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatalf("load config: %v", err)
 	}
-
-	logger.Init()
-
-	db, err := database.NewConnection(cfg.Database.DSN)
+	appLogger := logger.New(cfg)
+	db, err := bootstrap.Database(ctx, cfg)
 	if err != nil {
-		log.Fatalf("Failed to connect to database: %v", err)
+		appLogger.Error("database startup failed", "error", err)
+		os.Exit(1)
 	}
+	dispatcher := bootstrap.Dispatcher(cfg)
+	defer func() { _ = dispatcher.(interface{ Close() error }).Close() }()
+	redisClient := bootstrap.RedisClient(cfg)
+	defer func() { _ = redisClient.Close() }()
+	identityServices := bootstrap.IdentityService(cfg, db, dispatcher, appLogger)
+	server := httpserver.New(cfg, appLogger, db, redisClient, identityServices.Service, identityServices.Tokens)
 
-	jwtService := security.NewJWTService(
-		cfg.Auth.JWTAccessSecret,
-		cfg.Auth.JWTRefreshSecret,
-		cfg.Auth.AccessTTLMinutes,
-		cfg.Auth.RefreshTTLHours,
-	)
-
-	userRepo := repository.NewUserRepository(db)
-	userUsecase := usecase.NewUserUsecase(userRepo)
-	dispatcher, err := bootstrap.Dispatcher(cfg)
-	if err != nil {
-		log.Fatalf("Failed to build queue dispatcher: %v", err)
-	}
-	if closer, ok := dispatcher.(interface{ Close() error }); ok {
-		defer closer.Close()
-	}
-	mailer := appmail.NewMailer(appmail.Address{
-		Name:    cfg.Mail.FromName,
-		Address: cfg.Mail.FromAddress,
-	}, nil, dispatcher)
-	authUsecase := usecase.NewAuthUsecase(userRepo, jwtService, mailer)
-
-	app := fiber.New(fiber.Config{
-		ErrorHandler: func(c fiber.Ctx, err error) error {
-			logger.Logger.Println("Fiber error:", err)
-			return c.Status(500).JSON(fiber.Map{"error": "Internal server error"})
-		},
-	})
-
-	router.Setup(app, userUsecase, authUsecase, jwtService)
-
-	port := cfg.App.Port
 	go func() {
 		<-ctx.Done()
-		if err := app.Shutdown(); err != nil {
-			log.Printf("Failed to gracefully stop server: %v", err)
+		shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+		defer cancel()
+		if err := server.App.ShutdownWithContext(shutdownCtx); err != nil {
+			appLogger.Error("server shutdown failed", "error", err)
 		}
 	}()
-
-	log.Printf("Server is running on port %s", port)
-	if err := app.Listen(":" + port); err != nil {
-		log.Fatalf("Failed to start server: %v", err)
+	appLogger.Info("server starting", "port", cfg.App.Port)
+	if err := server.App.Listen(":" + cfg.App.Port); err != nil {
+		appLogger.Error("server stopped", "error", err)
+		os.Exit(1)
 	}
 }

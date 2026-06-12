@@ -1,17 +1,16 @@
-FROM golang:1.26-alpine
+FROM golang:1.26.4-alpine3.23 AS build
 
-WORKDIR /app
-
-RUN go install github.com/air-verse/air@latest
-
-RUN go install -tags 'mysql' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
-
+ARG TARGET=server
+WORKDIR /src
+RUN apk add --no-cache ca-certificates tzdata
 COPY go.mod go.sum ./
-
 RUN go mod download
-
-ENV PATH="$PATH:/go/bin"
-
 COPY . .
+RUN CGO_ENABLED=0 go build -buildvcs=false -trimpath -ldflags="-s -w" -o /out/service ./cmd/${TARGET}
 
-CMD ["air", "-c", ".air.toml"]
+FROM alpine:3.23
+RUN apk add --no-cache ca-certificates tzdata && addgroup -S app && adduser -S -G app app
+COPY --from=build /out/service /service
+USER app
+EXPOSE 8080
+ENTRYPOINT ["/service"]

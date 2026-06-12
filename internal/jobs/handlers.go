@@ -4,21 +4,24 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"log"
+	"log/slog"
 	"time"
 
 	appmail "github.com/rifkifajarramadhani/golang-clean-architecture/internal/mail"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/usecase"
 )
 
-func RegisterHandlers(registry *queue.HandlerRegistry, maintenance *usecase.MaintenanceUsecase, mailTransport appmail.Transport) error {
+type RefreshTokenCleaner interface {
+	CleanupRefreshTokens(context.Context, time.Time) (int64, error)
+}
+
+func RegisterHandlers(registry *queue.HandlerRegistry, maintenance RefreshTokenCleaner, mailTransport appmail.Transport, logger *slog.Logger) error {
 	if err := registry.Register(TypeDemoLog, func(_ context.Context, payload json.RawMessage) error {
 		var job DemoLog
 		if err := json.Unmarshal(payload, &job); err != nil {
 			return fmt.Errorf("decode demo log job: %w", err)
 		}
-		log.Printf("Demo job: %s", job.Message)
+		logger.Info("demo job", "message", job.Message)
 		return nil
 	}); err != nil {
 		return err
@@ -33,7 +36,7 @@ func RegisterHandlers(registry *queue.HandlerRegistry, maintenance *usecase.Main
 		if err != nil {
 			return err
 		}
-		log.Printf("Deleted %d expired or revoked refresh tokens", deleted)
+		logger.Info("refresh-token cleanup completed", "deleted", deleted)
 		return nil
 	}); err != nil {
 		return err

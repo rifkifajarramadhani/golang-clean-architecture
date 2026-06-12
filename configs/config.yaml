@@ -1,18 +1,32 @@
 app:
+  name: go-service
+  environment: development
   port: 8080
+
+http:
+  body_limit_bytes: 1048576
+  request_timeout_seconds: 15
+  cors_allowed_origins:
+    - http://localhost:3000
+  auth_rate_limit: 20
 
 database:
   host: db
   port: 3306
   user: root
-  password: greygoose
-  name: db_name
+  password: ""
+  name: app
+  max_open_connections: 25
+  max_idle_connections: 5
+  connection_max_minutes: 30
 
 auth:
-  jwt_access_secret: super-secret-access-key-change-me
-  jwt_refresh_secret: super-secret-refresh-key-change-me
+  jwt_access_secret: ""
+  jwt_refresh_secret: ""
   access_ttl_minutes: 15
   refresh_ttl_hours: 168
+  issuer: go-service
+  audience: go-service
 
 redis:
   address: redis:6379
@@ -20,16 +34,12 @@ redis:
   db: 0
 
 queue:
-  driver: redis
   concurrency: 10
   shutdown_seconds: 30
   queues:
     default: 3
     mail: 2
     maintenance: 1
-  database:
-    poll_interval_milliseconds: 500
-    reservation_seconds: 60
 
 scheduler:
   timezone: UTC
