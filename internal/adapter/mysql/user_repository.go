@@ -141,7 +141,8 @@ func toUser(record userModel) *user.User {
 }
 
 var (
-	_ auth.Repository            = (*UserRepository)(nil)
-	_ auth.MaintenanceRepository = (*UserRepository)(nil)
-	_ user.Repository            = (*UserRepository)(nil)
+	_ auth.UserStore              = (*UserRepository)(nil)
+	_ auth.RefreshTokenRepository = (*UserRepository)(nil)
+	_ auth.MaintenanceRepository  = (*UserRepository)(nil)
+	_ user.Repository             = (*UserRepository)(nil)
 )

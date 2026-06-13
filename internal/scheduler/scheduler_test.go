@@ -5,10 +5,15 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/jobs"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
 	"github.com/robfig/cron/v3"
 )
+
+type testJob struct{}
+
+func (testJob) Type() string    { return "test:job" }
+func (testJob) Payload() any    { return struct{}{} }
+func testJobFactory() queue.Job { return testJob{} }
 
 type parserFake struct{}
 
@@ -35,7 +40,7 @@ func TestRegistryDueUsesConfiguredTimezone(t *testing.T) {
 		Name:     "jakarta-midnight",
 		Cron:     "0 0 * * *",
 		Timezone: "Asia/Jakarta",
-		Job:      func() queue.Job { return jobs.CleanupRefreshTokens{} },
+		Job:      testJobFactory,
 	}); err != nil {
 		t.Fatal(err)
 	}
@@ -54,7 +59,7 @@ func TestRunnerUsesDeterministicTaskIDAndIgnoresDuplicate(t *testing.T) {
 	if err := registry.Register(Definition{
 		Name: "cleanup",
 		Cron: "* * * * *",
-		Job:  func() queue.Job { return jobs.CleanupRefreshTokens{} },
+		Job:  testJobFactory,
 	}); err != nil {
 		t.Fatal(err)
 	}

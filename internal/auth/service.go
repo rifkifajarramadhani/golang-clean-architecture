@@ -11,12 +11,15 @@ import (
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/user"
 )
 
-type Repository interface {
+type UserStore interface {
 	CreateUser(context.Context, *user.User) error
 	GetUserByEmail(context.Context, string) (*user.User, error)
 	GetUserByUsername(context.Context, string) (*user.User, error)
 	EmailExists(context.Context, string) (bool, error)
 	UsernameExists(context.Context, string) (bool, error)
+}
+
+type RefreshTokenRepository interface {
 	CreateRefreshToken(context.Context, *RefreshToken) error
 	GetActiveRefreshTokenByHash(context.Context, string) (*RefreshToken, error)
 	RevokeRefreshTokenByHash(context.Context, string) error
@@ -50,18 +53,25 @@ type Tokens struct {
 }
 
 type Service struct {
-	repo     Repository
+	users    UserStore
+	refresh  RefreshTokenRepository
 	tokens   TokenService
 	password PasswordHasher
 	welcome  WelcomeNotifier
 }
 
-func NewService(repo Repository, tokens TokenService, password PasswordHasher, welcome WelcomeNotifier) *Service {
-	return &Service{repo: repo, tokens: tokens, password: password, welcome: welcome}
+func NewService(
+	users UserStore,
+	refresh RefreshTokenRepository,
+	tokens TokenService,
+	password PasswordHasher,
+	welcome WelcomeNotifier,
+) *Service {
+	return &Service{users: users, refresh: refresh, tokens: tokens, password: password, welcome: welcome}
 }
 
 func (s *Service) Register(ctx context.Context, account *user.User) error {
-	emailExists, err := s.repo.EmailExists(ctx, account.Email)
+	emailExists, err := s.users.EmailExists(ctx, account.Email)
 	if err != nil {
 		return fmt.Errorf("check email: %w", err)
 	}
@@ -69,7 +79,7 @@ func (s *Service) Register(ctx context.Context, account *user.User) error {
 		return ErrDuplicateEmail
 	}
 
-	usernameExists, err := s.repo.UsernameExists(ctx, account.Username)
+	usernameExists, err := s.users.UsernameExists(ctx, account.Username)
 	if err != nil {
 		return fmt.Errorf("check username: %w", err)
 	}
@@ -83,7 +93,7 @@ func (s *Service) Register(ctx context.Context, account *user.User) error {
 	}
 	account.Password = hashedPassword
 
-	if err := s.repo.CreateUser(ctx, account); err != nil {
+	if err := s.users.CreateUser(ctx, account); err != nil {
 		return fmt.Errorf("create user: %w", err)
 	}
 	if s.welcome != nil {
@@ -93,7 +103,7 @@ func (s *Service) Register(ctx context.Context, account *user.User) error {
 }
 
 func (s *Service) Login(ctx context.Context, email, password string) (*Tokens, error) {
-	account, err := s.repo.GetUserByEmail(ctx, email)
+	account, err := s.users.GetUserByEmail(ctx, email)
 	if err != nil || account == nil {
 		return nil, ErrInvalidCredentials
 	}
@@ -113,15 +123,15 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Tokens, er
 	}
 
 	tokenHash := hashToken(refreshToken)
-	storedToken, err := s.repo.GetActiveRefreshTokenByHash(ctx, tokenHash)
+	storedToken, err := s.refresh.GetActiveRefreshTokenByHash(ctx, tokenHash)
 	if err != nil || storedToken.UserID != claims.UserID {
 		return nil, ErrUnauthorized
 	}
-	if err := s.repo.RevokeRefreshTokenByHash(ctx, tokenHash); err != nil {
+	if err := s.refresh.RevokeRefreshTokenByHash(ctx, tokenHash); err != nil {
 		return nil, fmt.Errorf("revoke refresh token: %w", err)
 	}
 
-	account, err := s.repo.GetUserByUsername(ctx, claims.Subject)
+	account, err := s.users.GetUserByUsername(ctx, claims.Subject)
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
@@ -129,7 +139,7 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Tokens, er
 }
 
 func (s *Service) Me(ctx context.Context, username string) (*user.User, error) {
-	account, err := s.repo.GetUserByUsername(ctx, username)
+	account, err := s.users.GetUserByUsername(ctx, username)
 	if err != nil {
 		return nil, ErrUnauthorized
 	}
@@ -145,7 +155,7 @@ func (s *Service) issueTokens(ctx context.Context, account *user.User) (*Tokens,
 	if err != nil {
 		return nil, fmt.Errorf("generate refresh token: %w", err)
 	}
-	if err := s.repo.CreateRefreshToken(ctx, &RefreshToken{
+	if err := s.refresh.CreateRefreshToken(ctx, &RefreshToken{
 		UserID: account.ID, TokenHash: hashToken(refreshToken), ExpiresAt: refreshExp,
 	}); err != nil {
 		return nil, fmt.Errorf("store refresh token: %w", err)

@@ -8,17 +8,10 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/http/router"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/jobs"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/jwt"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/logging"
 	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/password"
-	queueadapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/queue"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/auth"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
-	appmail "github.com/rifkifajarramadhani/golang-clean-architecture/internal/mail"
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/user"
 )
 
 func main() {
@@ -40,10 +33,6 @@ func main() {
 	}
 	defer func() { _ = mysqladapter.Close(db) }()
 
-	repository := mysqladapter.NewUserRepository(db)
-	hasher := password.Bcrypt{}
-	users := user.NewService(repository, hasher)
-	tokens := jwt.NewService(cfg.Auth.JWTAccessSecret, cfg.Auth.JWTRefreshSecret, cfg.Auth.AccessTTLMinutes, cfg.Auth.RefreshTTLHours)
 	dispatcher, err := bootstrap.Dispatcher(cfg, db)
 	if err != nil {
 		appLogger.ErrorContext(ctx, "build queue dispatcher failed", "error", err)
@@ -52,14 +41,13 @@ func main() {
 	if closer, ok := dispatcher.(interface{ Close() error }); ok {
 		defer func() { _ = closer.Close() }()
 	}
-	mailer := appmail.NewMailer(appmail.Address{Name: cfg.Mail.FromName, Address: cfg.Mail.FromAddress}, nil, queueadapter.NewMailDispatcher(dispatcher))
-	authService := auth.NewService(repository, tokens, hasher, jobs.NewWelcomeNotifier(mailer, appLogger.Logger))
+	services := bootstrap.WireHTTPServices(cfg, db, appLogger.Logger, dispatcher)
 
 	app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, err error) error {
 		appLogger.ErrorContext(c.Context(), "fiber error", "error", err)
 		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal server error"})
 	}})
-	router.Setup(app, users, authService, tokens, appLogger.Logger)
+	router.Setup(app, services.Users, services.Auth, services.Tokens, appLogger.Logger)
 	go func() {
 		<-ctx.Done()
 		if err := app.Shutdown(); err != nil {

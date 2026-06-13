@@ -9,34 +9,37 @@ import (
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/user"
 )
 
-type repositoryFake struct {
+type userStoreFake struct {
 	created        *user.User
 	emailExists    bool
 	usernameExists bool
 }
 
-func (r *repositoryFake) CreateUser(_ context.Context, account *user.User) error {
+func (r *userStoreFake) CreateUser(_ context.Context, account *user.User) error {
 	account.ID = 42
 	r.created = account
 	return nil
 }
-func (*repositoryFake) GetUserByEmail(context.Context, string) (*user.User, error) {
+func (*userStoreFake) GetUserByEmail(context.Context, string) (*user.User, error) {
 	return nil, errors.New("not implemented")
 }
-func (*repositoryFake) GetUserByUsername(context.Context, string) (*user.User, error) {
+func (*userStoreFake) GetUserByUsername(context.Context, string) (*user.User, error) {
 	return nil, errors.New("not implemented")
 }
-func (r *repositoryFake) EmailExists(context.Context, string) (bool, error) {
+func (r *userStoreFake) EmailExists(context.Context, string) (bool, error) {
 	return r.emailExists, nil
 }
-func (r *repositoryFake) UsernameExists(context.Context, string) (bool, error) {
+func (r *userStoreFake) UsernameExists(context.Context, string) (bool, error) {
 	return r.usernameExists, nil
 }
-func (*repositoryFake) CreateRefreshToken(context.Context, *RefreshToken) error { return nil }
-func (*repositoryFake) GetActiveRefreshTokenByHash(context.Context, string) (*RefreshToken, error) {
+
+type refreshTokenRepoFake struct{}
+
+func (*refreshTokenRepoFake) CreateRefreshToken(context.Context, *RefreshToken) error { return nil }
+func (*refreshTokenRepoFake) GetActiveRefreshTokenByHash(context.Context, string) (*RefreshToken, error) {
 	return nil, errors.New("not implemented")
 }
-func (*repositoryFake) RevokeRefreshTokenByHash(context.Context, string) error { return nil }
+func (*refreshTokenRepoFake) RevokeRefreshTokenByHash(context.Context, string) error { return nil }
 
 type passwordFake struct{}
 
@@ -58,9 +61,9 @@ type notifierFake struct{ called bool }
 func (n *notifierFake) NotifyWelcome(context.Context, user.User) { n.called = true }
 
 func TestRegister(t *testing.T) {
-	repo := &repositoryFake{}
+	repo := &userStoreFake{}
 	notifier := &notifierFake{}
-	service := NewService(repo, tokenServiceFake{}, passwordFake{}, notifier)
+	service := NewService(repo, &refreshTokenRepoFake{}, tokenServiceFake{}, passwordFake{}, notifier)
 	account := &user.User{Username: "rifki", Email: "rifki@example.com", Password: "secret"}
 	if err := service.Register(context.Background(), account); err != nil {
 		t.Fatal(err)
@@ -73,15 +76,15 @@ func TestRegister(t *testing.T) {
 func TestRegisterRejectsDuplicates(t *testing.T) {
 	tests := []struct {
 		name string
-		repo *repositoryFake
+		repo *userStoreFake
 		want error
 	}{
-		{"email", &repositoryFake{emailExists: true}, ErrDuplicateEmail},
-		{"username", &repositoryFake{usernameExists: true}, ErrDuplicateUsername},
+		{"email", &userStoreFake{emailExists: true}, ErrDuplicateEmail},
+		{"username", &userStoreFake{usernameExists: true}, ErrDuplicateUsername},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := NewService(test.repo, tokenServiceFake{}, passwordFake{}, nil).Register(
+			err := NewService(test.repo, &refreshTokenRepoFake{}, tokenServiceFake{}, passwordFake{}, nil).Register(
 				context.Background(), &user.User{Email: "x", Username: "x", Password: "x"},
 			)
 			if !errors.Is(err, test.want) {
