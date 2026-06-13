@@ -30,12 +30,12 @@ Backend services boilerplate using Clean Architecture principles with independen
 │   └── config.yaml             # App + DB config
 ├── internal/
 │   ├── config/                 # Config loader
-│   ├── delivery/http/          # HTTP handlers, routers, DTOs
-│   ├── domain/                 # Domain entities
-│   ├── infrastructure/         # DB connection, logger, migrations
-│   ├── models/                 # Database models
-│   ├── repository/             # Repository implementation
-│   └── usecase/                # Business logic
+│   ├── auth/                   # Authentication core and ports
+│   ├── user/                   # User core and ports
+│   ├── mail, queue, scheduler/ # Framework-neutral capabilities
+│   ├── adapter/                # HTTP, MySQL, JWT, SMTP, queue, cron, logging
+│   ├── bootstrap/              # Reusable dependency assembly
+│   └── config/                 # Config loader
 ├── docker-compose.yml
 ├── Dockerfile
 ├── Makefile
@@ -103,7 +103,7 @@ make migrate args=up
 Alternative without `make`:
 
 ```bash
-docker compose exec server migrate -database 'mysql://root:greygoose@tcp(db:3306)/db_name' -path internal/infrastructure/database/migrations up
+docker compose exec server migrate -database 'mysql://root:greygoose@tcp(db:3306)/db_name' -path internal/adapter/mysql/migrations up
 ```
 
 ### 3) Check logs
@@ -167,6 +167,23 @@ make queue args='delete all'
 The worker, scheduler, schedule command, and queue command all use the configured
 `queue.driver`. Redis is the default. Database mode requires migration
 `000003_create_queue_tables`.
+
+## Logging
+
+Applications emit structured JSON logs to stdout and `logs/app.log`. Configure
+the level and file path with `LOGGING_LEVEL` and `LOGGING_FILE`.
+
+## Quality Checks
+
+```bash
+make fmt
+make check
+make test-integration
+make vuln
+```
+
+GitHub Actions runs formatting/lint checks, tests, race detection, vulnerability
+scanning, MySQL queue integration tests, and the Docker build.
 
 Database jobs support delayed processing, retries, handler timeouts, uniqueness,
 retained completed jobs, failed-job inspection, retry, and deletion. Queue

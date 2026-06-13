@@ -70,6 +70,11 @@ type MailConfig struct {
 	FromName    string `mapstructure:"from_name"`
 }
 
+type LoggingConfig struct {
+	Level string `mapstructure:"level"`
+	File  string `mapstructure:"file"`
+}
+
 type Config struct {
 	App       AppConfig       `mapstructure:"app"`
 	Database  DatabaseConfig  `mapstructure:"database"`
@@ -78,6 +83,7 @@ type Config struct {
 	Queue     QueueConfig     `mapstructure:"queue"`
 	Scheduler SchedulerConfig `mapstructure:"scheduler"`
 	Mail      MailConfig      `mapstructure:"mail"`
+	Logging   LoggingConfig   `mapstructure:"logging"`
 }
 
 func Load() (*Config, error) {
@@ -102,6 +108,7 @@ func Load() (*Config, error) {
 	if err := normalizeMailConfig(&config.Mail); err != nil {
 		return nil, err
 	}
+	normalizeLoggingConfig(&config.Logging)
 
 	config.Database.DSN = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
 		config.Database.User,
@@ -112,6 +119,16 @@ func Load() (*Config, error) {
 	)
 
 	return &config, nil
+}
+
+func normalizeLoggingConfig(logging *LoggingConfig) {
+	logging.Level = strings.ToLower(strings.TrimSpace(logging.Level))
+	if logging.Level == "" {
+		logging.Level = "info"
+	}
+	if strings.TrimSpace(logging.File) == "" {
+		logging.File = "logs/app.log"
+	}
 }
 
 func normalizeMailConfig(mail *MailConfig) error {

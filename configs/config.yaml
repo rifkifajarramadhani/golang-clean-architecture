@@ -42,3 +42,7 @@ mail:
   encryption: none
   from_address: hello@example.com
   from_name: Golang Clean Architecture
+
+logging:
+  level: info
+  file: logs/app.log

@@ -6,6 +6,8 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/logging"
+	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
 )
@@ -13,18 +15,29 @@ import (
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
-
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("Failed to load config: %v", err)
+		log.Fatalf("load config: %v", err)
 	}
-	worker, err := bootstrap.Worker(cfg)
+	logger, err := logging.New(cfg.Logging)
 	if err != nil {
-		log.Fatalf("Failed to build worker: %v", err)
+		log.Fatalf("create logger: %v", err)
 	}
-	log.Printf("Worker is running with driver %s and queues: %v", cfg.Queue.Driver, cfg.Queue.Queues)
+	defer func() { _ = logger.Close() }()
+	db, err := mysqladapter.Open(ctx, cfg.Database.DSN, logger.Logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "connect to database failed", "error", err)
+		return
+	}
+	defer func() { _ = mysqladapter.Close(db) }()
+	worker, err := bootstrap.Worker(cfg, db, logger.Logger)
+	if err != nil {
+		logger.ErrorContext(ctx, "build worker failed", "error", err)
+		return
+	}
+	logger.Info("worker running", "driver", cfg.Queue.Driver, "queues", cfg.Queue.Queues)
 	if err := worker.Run(ctx); err != nil {
-		log.Fatalf("Failed to start worker: %v", err)
+		logger.ErrorContext(ctx, "worker stopped with error", "error", err)
 	}
-	log.Println("Stopping worker")
+	logger.Info("worker stopped")
 }

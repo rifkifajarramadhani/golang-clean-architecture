@@ -1,55 +1,42 @@
 # Go Architecture Playbook
 
-This file distills Clean Architecture principles for Go services so that agents keep codebase structure stable, testable, and framework-agnostic. All guidance is derived from Robert C. Martin's "The Clean Architecture".
+The application uses domain-first Clean Architecture. Source dependencies point
+from commands and adapters toward core capabilities.
 
-## Core Idea
+## Package Map
 
-- Keep the business model at the center; drive dependencies from outer details toward inner policy.
-- Make frameworks, databases, UIs, and external services replaceable plugins.
-- Shape packages so they "scream" the domain rather than the technical stacks.
+- `cmd/<app>` owns process lifecycle and wires dependencies.
+- `internal/auth` owns authentication rules, refresh tokens, and required ports.
+- `internal/user` owns the user entity, CRUD rules, and required ports.
+- `internal/mail`, `internal/queue`, and `internal/scheduler` own framework-neutral capabilities.
+- `internal/adapter/http` translates Fiber requests and responses.
+- `internal/adapter/mysql`, `jwt`, `password`, `smtp`, `queue`, and `cron` implement core ports.
+- `internal/adapter/jobs` translates durable jobs into core service calls.
+- `internal/bootstrap` assembles reusable adapter groups without owning process resources.
+- `internal/config` loads and normalizes application configuration.
 
-## Layer Responsibilities
+## Dependency Rules
 
-- **Entities (Enterprise/business rules):** Core types and invariants that survive technology shifts. Avoid knowing about transport, storage, or UI.
-- **Use Cases (Application rules):** Orchestrate interactions between entities to fulfill specific scenarios. Enforce application-specific policies and validation. Coordinate but do not implement UI/DB details.
-- **Interface Adapters:** Translate between external representations and the shapes the use cases/entities expect (e.g., HTTP handlers, gRPC servers, CLI commands, DB repositories). Keep mapping logic and DTOs here.
-- **Frameworks & Drivers:** Delivery and infrastructure details (HTTP server, gRPC runtime, database clients, queues, logging). These should depend on the adapters, not the other way around.
+- Core capabilities may depend on the standard library and other core capabilities.
+- Core capabilities must not import `internal/adapter`, `internal/bootstrap`, or `internal/config`.
+- Adapters may import core capabilities and third-party frameworks.
+- Commands create and close loggers, database pools, queue clients, servers, and workers.
+- Interfaces are defined by the package that consumes them and remain small.
+- Contexts enter at commands, HTTP handlers, CLI commands, or job handlers and propagate through all I/O.
 
-## Dependency Rule
-
-- Source code dependencies point inward. Outer layers may depend on inner layers; inner layers never import outer packages.
-- Data crosses boundaries as simple structures (DTOs) without behavior; avoid leaking framework types inward.
-- Use interfaces defined in the inner layers to invert dependencies; outer layers provide implementations.
+These rules are enforced by the `depguard` configuration in `.golangci.yml`.
 
 ## Data Flow
 
-1. Request enters via a driver (HTTP/gRPC/CLI).
-2. Adapter validates/parses input and calls a use case with boundary DTOs and interfaces.
-3. Use case invokes entities and calls out through interfaces for I/O.
-4. Adapter maps use case responses to transport-specific responses.
-5. Driver writes the response.
+1. A command creates configuration, logging, and infrastructure resources.
+2. An inbound adapter validates and translates an external request.
+3. A core service applies application rules through core-owned ports.
+4. Outbound adapters implement persistence, tokens, mail, queues, or scheduling.
+5. The inbound adapter maps the result to the external representation.
 
-## Package Layout Heuristics (Go-Friendly)
+## Testing
 
-- Keep `cmd/<app>` for wiring; it imports adapters and implementations.
-- Put domain and use cases in `internal/<domain>/...` or similar to discourage external coupling.
-- Keep adapter code (handlers, mappers, repository implementations) separate from pure domain/use case code.
-- Isolate framework details (HTTP server setup, gRPC registration, ORMs, message broker setup) so they are easy to swap.
-
-## Test Strategy
-
-- Entities: pure unit tests with no fakes required.
-- Use cases: test with in-memory doubles for gateways/ports; verify business rules and flows.
-- Adapters: contract/translation tests; ensure correct mapping between transports and use cases.
-- Drivers: minimal integration tests to prove wiring.
-
-## Additional Principles
-
-- Independent of UI: swap HTTP for CLI without touching business logic.
-- Independent of DB: repository interfaces live inside the use case layer; specific DB code lives in outer layers.
-- Independent of frameworks: frameworks are tools, not architecture; keep their types from polluting core layers.
-- Plug-in ability: add or remove external systems by adding adapters that satisfy inner interfaces.
-
-## References
-
-- Paraphrased from: Robert C. Martin, "The Clean Architecture" (blog.cleancoder.com/uncle-bob/2012/08/13/the-clean-architecture.html).
+- Core packages use deterministic fakes and table-driven tests.
+- Adapters test translation, error mapping, cancellation, and resource handling.
+- MySQL and queue behavior use integration tests.
+- Commands remain thin and are validated through builds and smoke tests.

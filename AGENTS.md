@@ -2,10 +2,10 @@
 
 This guide instructs agents how to write Go code that mirrors community best practices. Content is drawn from Effective Go, Uber's Go Style Guide, Go Code Review Comments, the Clean Architecture essay, and the Awesome Go catalog. Supporting detail lives in:
 
-- [docs/go/STYLE_GUIDE.md](docs/go/STYLE_GUIDE.md) (idioms and formatting)
-- [docs/go/ARCHITECTURE.md](docs/go/ARCHITECTURE.md) (layering and dependency rules)
-- [docs/go/PATTERNS.md](docs/go/PATTERNS.md) (common solutions and resource selection)
-- [docs/go/LINTING.md](docs/go/LINTING.md) (tooling and checks)
+- [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md) (idioms and formatting)
+- [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (layering and dependency rules)
+- [docs/PATTERNS.md](docs/PATTERNS.md) (common solutions and resource selection)
+- [docs/LINTING.md](docs/LINTING.md) (tooling and checks)
 
 ## Operating Rules
 
@@ -54,7 +54,7 @@ This guide instructs agents how to write Go code that mirrors community best pra
 - Entities and use cases contain business rules; they do not import transport or DB packages.
 - Interface adapters map between outer representations (HTTP/gRPC/DB) and inner DTOs/domain models.
 - Frameworks and drivers (HTTP server, gRPC runtime, DB client) are plugins; replaceable without rewriting business logic.
-- Package layout heuristic: `cmd/<app>` wires; `internal/<domain>` holds entities/use cases; adapters live alongside drivers; keep DTOs at boundaries. See [docs/go/ARCHITECTURE.md](docs/go/ARCHITECTURE.md).
+- Package layout heuristic: `cmd/<app>` wires; `internal/<domain>` holds entities/use cases; adapters live under `internal/adapter`; keep DTOs at boundaries. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 ## Common Patterns & Snippets
 

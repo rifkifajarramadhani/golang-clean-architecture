@@ -30,6 +30,10 @@ Use this checklist to keep Go codebases healthy. Content is drawn from Effective
 - `golangci-lint run ./...` (or tailored config)
 - `go test ./...` (add `-race` for critical paths)
 
+This repository provides these gates through `make check`, `.golangci.yml`, and
+`.github/workflows/quality.yml`. Run `make vuln` separately for dependency
+vulnerability scanning.
+
 ## References
 
 - Paraphrased from: Effective Go (go.dev/doc/effective_go), Go Code Review Comments (go.dev/wiki/CodeReviewComments), and common Go tooling practices.
