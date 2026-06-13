@@ -7,8 +7,6 @@ import (
 	stdmail "net/mail"
 	"strings"
 	"time"
-
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
 )
 
 const TypeSend = "mail:send"
@@ -65,13 +63,22 @@ type QueueOptions struct {
 	TaskID    string
 }
 
+type QueuedMessageInfo struct {
+	ID    string
+	Queue string
+}
+
+type QueuedMessageDispatcher interface {
+	DispatchMessage(context.Context, SendJob, QueueOptions) (*QueuedMessageInfo, error)
+}
+
 type Mailer struct {
 	defaultFrom Address
 	transport   Transport
-	dispatcher  queue.Dispatcher
+	dispatcher  QueuedMessageDispatcher
 }
 
-func NewMailer(defaultFrom Address, transport Transport, dispatcher queue.Dispatcher) *Mailer {
+func NewMailer(defaultFrom Address, transport Transport, dispatcher QueuedMessageDispatcher) *Mailer {
 	return &Mailer{defaultFrom: defaultFrom, transport: transport, dispatcher: dispatcher}
 }
 
@@ -109,7 +116,7 @@ func (m *Mailer) Send(ctx context.Context, mailable Mailable) error {
 	return m.transport.Send(ctx, message)
 }
 
-func (m *Mailer) Queue(ctx context.Context, mailable Mailable, options QueueOptions) (*queue.JobInfo, error) {
+func (m *Mailer) Queue(ctx context.Context, mailable Mailable, options QueueOptions) (*QueuedMessageInfo, error) {
 	if m.dispatcher == nil {
 		return nil, errors.New("queue dispatcher is not configured")
 	}
@@ -126,23 +133,12 @@ func (m *Mailer) Queue(ctx context.Context, mailable Mailable, options QueueOpti
 	if options.Timeout <= 0 {
 		options.Timeout = 30 * time.Second
 	}
-	return m.dispatcher.Dispatch(ctx, SendJob{Message: message}, queue.DispatchOptions{
-		Queue:     options.Queue,
-		ProcessAt: options.ProcessAt,
-		MaxRetry:  options.MaxRetry,
-		Timeout:   options.Timeout,
-		UniqueFor: options.UniqueFor,
-		Retention: options.Retention,
-		TaskID:    options.TaskID,
-	})
+	return m.dispatcher.DispatchMessage(ctx, SendJob{Message: message}, options)
 }
 
 type SendJob struct {
 	Message Message `json:"message"`
 }
-
-func (SendJob) Type() string   { return TypeSend }
-func (j SendJob) Payload() any { return j }
 
 func validateMessage(message Message) error {
 	if _, err := stdmail.ParseAddress(message.Envelope.From.Address); err != nil {

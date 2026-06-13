@@ -5,9 +5,16 @@ import (
 	"testing"
 	"time"
 
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/jobs"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/jobs"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
+	"github.com/robfig/cron/v3"
 )
+
+type parserFake struct{}
+
+func (parserFake) Parse(expression string, location *time.Location) (Schedule, error) {
+	return cron.ParseStandard("CRON_TZ=" + location.String() + " " + expression)
+}
 
 type fakeDispatcher struct {
 	options []queue.DispatchOptions
@@ -20,7 +27,7 @@ func (d *fakeDispatcher) Dispatch(_ context.Context, _ queue.Job, options queue.
 }
 
 func TestRegistryDueUsesConfiguredTimezone(t *testing.T) {
-	registry, err := NewRegistry("UTC")
+	registry, err := NewRegistry("UTC", parserFake{})
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -40,7 +47,7 @@ func TestRegistryDueUsesConfiguredTimezone(t *testing.T) {
 }
 
 func TestRunnerUsesDeterministicTaskIDAndIgnoresDuplicate(t *testing.T) {
-	registry, err := NewRegistry("UTC")
+	registry, err := NewRegistry("UTC", parserFake{})
 	if err != nil {
 		t.Fatal(err)
 	}

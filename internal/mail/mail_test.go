@@ -6,8 +6,6 @@ import (
 	"strings"
 	"testing"
 	"time"
-
-	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
 )
 
 type mailableFake struct {
@@ -32,15 +30,15 @@ func (t *transportFake) Send(_ context.Context, message Message) error {
 }
 
 type dispatcherFake struct {
-	job     queue.Job
-	options queue.DispatchOptions
+	job     SendJob
+	options QueueOptions
 	err     error
 }
 
-func (d *dispatcherFake) Dispatch(_ context.Context, job queue.Job, options queue.DispatchOptions) (*queue.JobInfo, error) {
+func (d *dispatcherFake) DispatchMessage(_ context.Context, job SendJob, options QueueOptions) (*QueuedMessageInfo, error) {
 	d.job = job
 	d.options = options
-	return &queue.JobInfo{ID: "job-1", Queue: options.Queue}, d.err
+	return &QueuedMessageInfo{ID: "job-1", Queue: options.Queue}, d.err
 }
 
 func TestMailerSendRendersDefaultSenderAndAttachments(t *testing.T) {
@@ -80,15 +78,14 @@ func TestMailerQueueUsesMailDefaultsAndRenderedPayload(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if info.Queue != "mail" || dispatcher.job.Type() != TypeSend {
-		t.Fatalf("unexpected dispatched job: info=%+v type=%s", info, dispatcher.job.Type())
+	if info.Queue != "mail" {
+		t.Fatalf("unexpected dispatched job: info=%+v", info)
 	}
 	if dispatcher.options.Queue != "mail" || dispatcher.options.MaxRetry != 3 || dispatcher.options.Timeout != 30*time.Second {
 		t.Fatalf("unexpected queue options: %+v", dispatcher.options)
 	}
-	job := dispatcher.job.(SendJob)
-	if job.Message.Content.Text != "Hello" {
-		t.Fatalf("unexpected queued message: %+v", job.Message)
+	if dispatcher.job.Message.Content.Text != "Hello" {
+		t.Fatalf("unexpected queued message: %+v", dispatcher.job.Message)
 	}
 }
 

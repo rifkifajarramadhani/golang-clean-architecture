@@ -8,10 +8,17 @@ import (
 	"time"
 
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
-	"github.com/robfig/cron/v3"
 )
 
 type JobFactory func() queue.Job
+
+type Schedule interface {
+	Next(time.Time) time.Time
+}
+
+type Parser interface {
+	Parse(string, *time.Location) (Schedule, error)
+}
 
 type Definition struct {
 	Name            string
@@ -19,20 +26,24 @@ type Definition struct {
 	Timezone        string
 	Job             JobFactory
 	DispatchOptions queue.DispatchOptions
-	schedule        cron.Schedule
+	schedule        Schedule
 }
 
 type Registry struct {
 	defaultLocation *time.Location
+	parser          Parser
 	definitions     []Definition
 }
 
-func NewRegistry(defaultTimezone string) (*Registry, error) {
+func NewRegistry(defaultTimezone string, parser Parser) (*Registry, error) {
 	location, err := time.LoadLocation(defaultTimezone)
 	if err != nil {
 		return nil, fmt.Errorf("load scheduler timezone: %w", err)
 	}
-	return &Registry{defaultLocation: location}, nil
+	if parser == nil {
+		return nil, errors.New("schedule parser is required")
+	}
+	return &Registry{defaultLocation: location, parser: parser}, nil
 }
 
 func (r *Registry) Register(definition Definition) error {
@@ -54,7 +65,7 @@ func (r *Registry) Register(definition Definition) error {
 		}
 	}
 
-	parsed, err := cron.ParseStandard("CRON_TZ=" + location.String() + " " + definition.Cron)
+	parsed, err := r.parser.Parse(definition.Cron, location)
 	if err != nil {
 		return fmt.Errorf("parse schedule %q: %w", definition.Name, err)
 	}

@@ -56,3 +56,11 @@ func TestNormalizeMailConfigRejectsInvalidValues(t *testing.T) {
 		t.Fatal("expected invalid from address error")
 	}
 }
+
+func TestNormalizeLoggingConfigDefaults(t *testing.T) {
+	cfg := LoggingConfig{}
+	normalizeLoggingConfig(&cfg)
+	if cfg.Level != "info" || cfg.File != "logs/app.log" {
+		t.Fatalf("unexpected logging defaults: %+v", cfg)
+	}
+}
