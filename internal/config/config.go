@@ -18,7 +18,8 @@ const (
 )
 
 type AppConfig struct {
-	Port string `mapstructure:"port"`
+	Port        string `mapstructure:"port"`
+	Environment string `mapstructure:"environment"`
 }
 
 type DatabaseConfig struct {
@@ -31,10 +32,14 @@ type DatabaseConfig struct {
 }
 
 type AuthConfig struct {
-	JWTAccessSecret  string `mapstructure:"jwt_access_secret"`
-	JWTRefreshSecret string `mapstructure:"jwt_refresh_secret"`
-	AccessTTLMinutes int    `mapstructure:"access_ttl_minutes"`
-	RefreshTTLHours  int    `mapstructure:"refresh_ttl_hours"`
+	JWTAccessSecret      string `mapstructure:"jwt_access_secret"`
+	JWTRefreshSecret     string `mapstructure:"jwt_refresh_secret"`
+	AccessTTLMinutes     int    `mapstructure:"access_ttl_minutes"`
+	RefreshTTLHours      int    `mapstructure:"refresh_ttl_hours"`
+	Issuer               string `mapstructure:"issuer"`
+	Audience             string `mapstructure:"audience"`
+	VerificationTTLHours int    `mapstructure:"verification_ttl_hours"`
+	BootstrapAdminEmail  string `mapstructure:"bootstrap_admin_email"`
 }
 
 type RedisConfig struct {
@@ -108,6 +113,9 @@ func Load() (*Config, error) {
 	if err := normalizeMailConfig(&config.Mail); err != nil {
 		return nil, err
 	}
+	if err := normalizeAuthConfig(&config.App, &config.Auth); err != nil {
+		return nil, err
+	}
 	normalizeLoggingConfig(&config.Logging)
 
 	config.Database.DSN = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
@@ -119,6 +127,48 @@ func Load() (*Config, error) {
 	)
 
 	return &config, nil
+}
+
+func normalizeAuthConfig(app *AppConfig, auth *AuthConfig) error {
+	app.Environment = strings.ToLower(strings.TrimSpace(app.Environment))
+	if app.Environment == "" {
+		app.Environment = "development"
+	}
+	auth.Issuer = strings.TrimSpace(auth.Issuer)
+	if auth.Issuer == "" {
+		auth.Issuer = "golang-clean-architecture"
+	}
+	auth.Audience = strings.TrimSpace(auth.Audience)
+	if auth.Audience == "" {
+		auth.Audience = "golang-clean-architecture-api"
+	}
+	if auth.VerificationTTLHours <= 0 {
+		auth.VerificationTTLHours = 24
+	}
+	if auth.AccessTTLMinutes <= 0 {
+		auth.AccessTTLMinutes = 15
+	}
+	if auth.RefreshTTLHours <= 0 {
+		auth.RefreshTTLHours = 168
+	}
+	auth.BootstrapAdminEmail = strings.ToLower(strings.TrimSpace(auth.BootstrapAdminEmail))
+	if auth.BootstrapAdminEmail != "" {
+		address, err := stdmail.ParseAddress(auth.BootstrapAdminEmail)
+		if err != nil {
+			return fmt.Errorf("invalid bootstrap admin email: %w", err)
+		}
+		if address.Address != auth.BootstrapAdminEmail {
+			return fmt.Errorf("invalid bootstrap admin email %q", auth.BootstrapAdminEmail)
+		}
+	}
+	if app.Environment != "development" && app.Environment != "test" {
+		if len(auth.JWTAccessSecret) < 32 || len(auth.JWTRefreshSecret) < 32 ||
+			auth.JWTAccessSecret == auth.JWTRefreshSecret ||
+			strings.Contains(auth.JWTAccessSecret, "change-me") || strings.Contains(auth.JWTRefreshSecret, "change-me") {
+			return fmt.Errorf("production JWT secrets must be distinct, non-placeholder values of at least 32 bytes")
+		}
+	}
+	return nil
 }
 
 func normalizeLoggingConfig(logging *LoggingConfig) {

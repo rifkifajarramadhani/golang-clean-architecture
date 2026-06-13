@@ -64,3 +64,33 @@ func TestNormalizeLoggingConfigDefaults(t *testing.T) {
 		t.Fatalf("unexpected logging defaults: %+v", cfg)
 	}
 }
+
+func TestNormalizeAuthConfigRejectsUnsafeProductionSecrets(t *testing.T) {
+	tests := []AuthConfig{
+		{JWTAccessSecret: "short", JWTRefreshSecret: "also-short"},
+		{JWTAccessSecret: "same-secret-that-is-at-least-32-bytes", JWTRefreshSecret: "same-secret-that-is-at-least-32-bytes"},
+		{JWTAccessSecret: "super-secret-access-key-change-me", JWTRefreshSecret: "different-secret-that-is-at-least-32"},
+	}
+	staging := AppConfig{Environment: "staging"}
+	if err := normalizeAuthConfig(&staging, &AuthConfig{}); err == nil {
+		t.Fatal("expected non-development environment to reject unsafe secrets")
+	}
+	for _, auth := range tests {
+		app := AppConfig{Environment: "production"}
+		if err := normalizeAuthConfig(&app, &auth); err == nil {
+			t.Fatalf("expected rejection for %+v", auth)
+		}
+	}
+}
+
+func TestNormalizeAuthConfigDefaults(t *testing.T) {
+	app := AppConfig{}
+	auth := AuthConfig{}
+	if err := normalizeAuthConfig(&app, &auth); err != nil {
+		t.Fatal(err)
+	}
+	if app.Environment != "development" || auth.Issuer == "" || auth.Audience == "" ||
+		auth.VerificationTTLHours != 24 || auth.AccessTTLMinutes != 15 || auth.RefreshTTLHours != 168 {
+		t.Fatalf("unexpected defaults: app=%+v auth=%+v", app, auth)
+	}
+}

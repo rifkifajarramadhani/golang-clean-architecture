@@ -27,7 +27,7 @@ migrate-create:
 	docker compose exec server migrate create -ext sql -dir $(MIGRATIONS) -seq $(name)
 
 migrate:
-	docker compose exec server migrate -database $(MYSQL_URL) -path $(MIGRATIONS) $(args)
+	docker compose exec server migrate -database '$(MYSQL_URL)' -path $(MIGRATIONS) $(args)
 
 fmt:
 	goimports -w .
@@ -51,6 +51,7 @@ test-race:
 
 test-integration:
 	QUEUE_TEST_MYSQL_DSN="$${QUEUE_TEST_MYSQL_DSN}" go test ./internal/adapter/queue -run DatabaseQueue
+	USER_TEST_MYSQL_DSN="$${USER_TEST_MYSQL_DSN}" go test ./internal/adapter/mysql -run UserSecurity
 
 vuln:
 	govulncheck ./...

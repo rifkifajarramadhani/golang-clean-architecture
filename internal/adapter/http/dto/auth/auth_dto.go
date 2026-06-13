@@ -15,6 +15,14 @@ type RefreshRequest struct {
 	RefreshToken string `json:"refresh_token"`
 }
 
+type VerifyEmailRequest struct {
+	Token string `json:"token"`
+}
+
+type ResendVerificationRequest struct {
+	Email string `json:"email"`
+}
+
 type AuthResponse struct {
 	AccessToken      string `json:"access_token"`
 	AccessExpiresAt  string `json:"access_expires_at"`
@@ -23,7 +31,10 @@ type AuthResponse struct {
 }
 
 type MeResponse struct {
-	ID       int    `json:"id"`
-	Username string `json:"username"`
-	Email    string `json:"email"`
+	ID            int    `json:"id"`
+	Username      string `json:"username"`
+	Email         string `json:"email"`
+	Role          string `json:"role"`
+	EmailVerified bool   `json:"email_verified"`
+	PendingEmail  string `json:"pending_email,omitempty"`
 }

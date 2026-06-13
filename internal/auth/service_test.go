@@ -10,86 +10,209 @@ import (
 )
 
 type userStoreFake struct {
-	created        *user.User
-	emailExists    bool
-	usernameExists bool
+	created *user.User
+	account *user.User
 }
 
 func (r *userStoreFake) CreateUser(_ context.Context, account *user.User) error {
 	account.ID = 42
-	r.created = account
+	copy := *account
+	r.created = &copy
 	return nil
 }
-func (*userStoreFake) GetUserByEmail(context.Context, string) (*user.User, error) {
-	return nil, errors.New("not implemented")
+func (r *userStoreFake) GetUserByID(context.Context, int) (*user.User, error) {
+	if r.account == nil {
+		return nil, user.ErrNotFound
+	}
+	copy := *r.account
+	return &copy, nil
 }
-func (*userStoreFake) GetUserByUsername(context.Context, string) (*user.User, error) {
-	return nil, errors.New("not implemented")
+func (r *userStoreFake) GetUserByEmail(context.Context, string) (*user.User, error) {
+	return r.GetUserByID(context.Background(), 1)
 }
-func (r *userStoreFake) EmailExists(context.Context, string) (bool, error) {
-	return r.emailExists, nil
-}
-func (r *userStoreFake) UsernameExists(context.Context, string) (bool, error) {
-	return r.usernameExists, nil
+func (r *userStoreFake) GetUserByEmailOrPending(context.Context, string) (*user.User, error) {
+	return r.GetUserByID(context.Background(), 1)
 }
 
-type refreshTokenRepoFake struct{}
-
-func (*refreshTokenRepoFake) CreateRefreshToken(context.Context, *RefreshToken) error { return nil }
-func (*refreshTokenRepoFake) GetActiveRefreshTokenByHash(context.Context, string) (*RefreshToken, error) {
-	return nil, errors.New("not implemented")
+type refreshTokenRepoFake struct {
+	stored  *RefreshToken
+	revoked bool
 }
-func (*refreshTokenRepoFake) RevokeRefreshTokenByHash(context.Context, string) error { return nil }
+
+func (r *refreshTokenRepoFake) CreateRefreshToken(_ context.Context, token *RefreshToken) error {
+	r.stored = token
+	return nil
+}
+func (r *refreshTokenRepoFake) GetActiveRefreshTokenByHash(context.Context, string) (*RefreshToken, error) {
+	if r.stored == nil {
+		return nil, errors.New("not found")
+	}
+	return r.stored, nil
+}
+func (r *refreshTokenRepoFake) RevokeRefreshTokenByHash(context.Context, string) error {
+	r.revoked = true
+	return nil
+}
+
+type verificationRepoFake struct {
+	token  *EmailVerificationToken
+	result *EmailVerificationResult
+	err    error
+}
+
+func (r *verificationRepoFake) ReplaceEmailVerificationToken(_ context.Context, token *EmailVerificationToken) error {
+	r.token = token
+	return nil
+}
+func (r *verificationRepoFake) VerifyEmail(context.Context, string, string, time.Time) (*EmailVerificationResult, error) {
+	return r.result, r.err
+}
 
 type passwordFake struct{}
 
 func (passwordFake) Hash(string) (string, error)  { return "hashed", nil }
 func (passwordFake) Compare(string, string) error { return nil }
 
-type tokenServiceFake struct{}
+type tokenServiceFake struct {
+	claims Claims
+}
 
-func (tokenServiceFake) GenerateAccessToken(string, int) (string, time.Time, error) {
+func (tokenServiceFake) GenerateAccessToken(int, int) (string, time.Time, error) {
 	return "access", time.Now().Add(time.Minute), nil
 }
-func (tokenServiceFake) GenerateRefreshToken(string, int) (string, time.Time, error) {
+func (tokenServiceFake) GenerateRefreshToken(int, int) (string, time.Time, error) {
 	return "refresh", time.Now().Add(time.Hour), nil
 }
-func (tokenServiceFake) ValidateRefreshToken(string) (Claims, error) { return Claims{}, nil }
+func (t tokenServiceFake) ValidateRefreshToken(string) (Claims, error) { return t.claims, nil }
 
-type notifierFake struct{ called bool }
+type notifierFake struct {
+	called bool
+	token  string
+	email  string
+}
 
-func (n *notifierFake) NotifyWelcome(context.Context, user.User) { n.called = true }
+type welcomeNotifierFake struct {
+	called  int
+	account user.User
+}
 
-func TestRegister(t *testing.T) {
-	repo := &userStoreFake{}
+func (n *welcomeNotifierFake) NotifyWelcome(_ context.Context, account user.User) {
+	n.called++
+	n.account = account
+}
+
+func (n *notifierFake) NotifyVerification(_ context.Context, account user.User, token string) {
+	n.called, n.token, n.email = true, token, account.Email
+}
+
+func TestResendVerificationTargetsPendingEmail(t *testing.T) {
+	verified := time.Now()
+	users := &userStoreFake{account: &user.User{
+		ID: 42, Email: "old@example.com", PendingEmail: "new@example.com", EmailVerifiedAt: &verified,
+	}}
 	notifier := &notifierFake{}
-	service := NewService(repo, &refreshTokenRepoFake{}, tokenServiceFake{}, passwordFake{}, notifier)
-	account := &user.User{Username: "rifki", Email: "rifki@example.com", Password: "secret"}
+	service := newTestService(users, &refreshTokenRepoFake{}, &verificationRepoFake{}, tokenServiceFake{}, notifier)
+	if err := service.ResendVerification(context.Background(), "new@example.com"); err != nil {
+		t.Fatal(err)
+	}
+	if notifier.email != "new@example.com" {
+		t.Fatalf("verification sent to %q", notifier.email)
+	}
+}
+
+func newTestService(users *userStoreFake, refresh *refreshTokenRepoFake, verification *verificationRepoFake, tokens tokenServiceFake, notifier VerificationNotifier) *Service {
+	return NewService(users, refresh, verification, tokens, passwordFake{}, notifier, nil, time.Hour, "")
+}
+
+func TestRegisterHashesPasswordAndSendsSingleUseVerification(t *testing.T) {
+	users := &userStoreFake{}
+	verification := &verificationRepoFake{}
+	notifier := &notifierFake{}
+	service := newTestService(users, &refreshTokenRepoFake{}, verification, tokenServiceFake{}, notifier)
+	account := &user.User{Username: "rifki", Email: "RIFKI@example.com", Password: "long-password"}
 	if err := service.Register(context.Background(), account); err != nil {
 		t.Fatal(err)
 	}
-	if repo.created == nil || account.Password != "hashed" || !notifier.called {
+	if users.created == nil || account.Password != "hashed" || account.Role != user.RoleUser || !notifier.called {
 		t.Fatalf("unexpected registration: account=%+v notified=%v", account, notifier.called)
+	}
+	if verification.token == nil || verification.token.TokenHash == notifier.token {
+		t.Fatal("verification token was not stored as a hash")
 	}
 }
 
-func TestRegisterRejectsDuplicates(t *testing.T) {
+func TestVerifyEmailSendsWelcomeOnlyForFirstVerification(t *testing.T) {
+	account := &user.User{ID: 42, Username: "rifki", Email: "rifki@example.com"}
 	tests := []struct {
-		name string
-		repo *userStoreFake
-		want error
+		name              string
+		firstVerification bool
+		wantWelcome       int
 	}{
-		{"email", &userStoreFake{emailExists: true}, ErrDuplicateEmail},
-		{"username", &userStoreFake{usernameExists: true}, ErrDuplicateUsername},
+		{"first verification", true, 1},
+		{"pending email verification", false, 0},
 	}
 	for _, test := range tests {
 		t.Run(test.name, func(t *testing.T) {
-			err := NewService(test.repo, &refreshTokenRepoFake{}, tokenServiceFake{}, passwordFake{}, nil).Register(
-				context.Background(), &user.User{Email: "x", Username: "x", Password: "x"},
+			verification := &verificationRepoFake{result: &EmailVerificationResult{
+				User: account, FirstVerification: test.firstVerification,
+			}}
+			welcome := &welcomeNotifierFake{}
+			service := NewService(
+				&userStoreFake{}, &refreshTokenRepoFake{}, verification, tokenServiceFake{}, passwordFake{},
+				nil, welcome, time.Hour, "",
 			)
-			if !errors.Is(err, test.want) {
-				t.Fatalf("got %v want %v", err, test.want)
+			if err := service.VerifyEmail(context.Background(), "token"); err != nil {
+				t.Fatal(err)
+			}
+			if welcome.called != test.wantWelcome {
+				t.Fatalf("welcome calls = %d, want %d", welcome.called, test.wantWelcome)
 			}
 		})
+	}
+}
+
+func TestVerifyEmailSucceedsWithBestEffortWelcomeNotifier(t *testing.T) {
+	verification := &verificationRepoFake{result: &EmailVerificationResult{
+		User: &user.User{ID: 42}, FirstVerification: true,
+	}}
+	service := NewService(
+		&userStoreFake{}, &refreshTokenRepoFake{}, verification, tokenServiceFake{}, passwordFake{},
+		nil, &welcomeNotifierFake{}, time.Hour, "",
+	)
+	if err := service.VerifyEmail(context.Background(), "token"); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestLoginRequiresVerifiedEmail(t *testing.T) {
+	users := &userStoreFake{account: &user.User{ID: 42, Password: "hashed", TokenVersion: 1}}
+	service := newTestService(users, &refreshTokenRepoFake{}, &verificationRepoFake{}, tokenServiceFake{}, nil)
+	if _, err := service.Login(context.Background(), "user@example.com", "password"); !errors.Is(err, ErrEmailUnverified) {
+		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestRefreshUsesStableUserIDAndRejectsStaleTokenVersion(t *testing.T) {
+	verified := time.Now()
+	users := &userStoreFake{account: &user.User{
+		ID: 42, Username: "new-name", EmailVerifiedAt: &verified, TokenVersion: 2,
+	}}
+	refresh := &refreshTokenRepoFake{stored: &RefreshToken{UserID: 42}}
+	service := newTestService(users, refresh, &verificationRepoFake{}, tokenServiceFake{
+		claims: Claims{UserID: 42, TokenVersion: 1},
+	}, nil)
+	if _, err := service.Refresh(context.Background(), "old-refresh"); !errors.Is(err, ErrUnauthorized) {
+		t.Fatalf("stale token error = %v", err)
+	}
+	if refresh.revoked {
+		t.Fatal("stale token should not be rotated")
+	}
+
+	service.tokens = tokenServiceFake{claims: Claims{UserID: 42, TokenVersion: 2}}
+	if _, err := service.Refresh(context.Background(), "valid-refresh"); err != nil {
+		t.Fatal(err)
+	}
+	if !refresh.revoked {
+		t.Fatal("refresh token was not rotated")
 	}
 }

@@ -2,11 +2,14 @@ package main
 
 import (
 	"context"
+	"errors"
 	"log"
 	"os/signal"
 	"syscall"
+	"time"
 
 	"github.com/gofiber/fiber/v3"
+	"github.com/gofiber/fiber/v3/middleware/helmet"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/http/router"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/logging"
 	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
@@ -43,10 +46,18 @@ func main() {
 	}
 	services := bootstrap.WireHTTPServices(cfg, db, appLogger.Logger, dispatcher)
 
-	app := fiber.New(fiber.Config{ErrorHandler: func(c fiber.Ctx, err error) error {
-		appLogger.ErrorContext(c.Context(), "fiber error", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "Internal server error"})
-	}})
+	app := fiber.New(fiber.Config{
+		BodyLimit: 64 * 1024, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
+		ErrorHandler: func(c fiber.Ctx, err error) error {
+			var fiberErr *fiber.Error
+			if errors.As(err, &fiberErr) {
+				return c.Status(fiberErr.Code).JSON(fiber.Map{"error": fiberErr.Message})
+			}
+			appLogger.ErrorContext(c.Context(), "fiber error", "error", err)
+			return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "internal server error"})
+		},
+	})
+	app.Use(helmet.New())
 	router.Setup(app, services.Users, services.Auth, services.Tokens, appLogger.Logger)
 	go func() {
 		<-ctx.Done()

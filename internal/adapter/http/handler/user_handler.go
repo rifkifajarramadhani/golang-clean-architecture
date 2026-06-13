@@ -12,92 +12,210 @@ import (
 
 type UserService interface {
 	Create(context.Context, *user.User) error
-	GetAll(context.Context) ([]*user.User, error)
+	List(context.Context, int, int) ([]*user.User, int64, error)
 	GetByID(context.Context, int) (*user.User, error)
-	Update(context.Context, *user.User) error
-	Delete(context.Context, int) error
+	UpdateProfile(context.Context, int, string, string) error
+	ChangePassword(context.Context, int, string, string) error
+	ChangeRole(context.Context, int, int, string) error
+	Delete(context.Context, int, int) error
+	DeleteSelf(context.Context, int, string) error
+}
+
+type VerificationSender interface {
+	SendVerificationForUser(context.Context, int) error
 }
 
 type UserHandler struct {
-	users  UserService
-	logger *slog.Logger
+	users        UserService
+	verification VerificationSender
+	logger       *slog.Logger
 }
 
-func NewUserHandler(service UserService, logger *slog.Logger) *UserHandler {
-	return &UserHandler{users: service, logger: logger}
+func NewUserHandler(service UserService, verification VerificationSender, logger *slog.Logger) *UserHandler {
+	return &UserHandler{users: service, verification: verification, logger: logger}
 }
 
 func (h *UserHandler) GetUsers(c fiber.Ctx) error {
-	accounts, err := h.users.GetAll(c.Context())
+	page, _ := strconv.Atoi(c.Query("page", "1"))
+	limit, _ := strconv.Atoi(c.Query("limit", "20"))
+	page, limit = user.NormalizePagination(page, limit)
+	accounts, total, err := h.users.List(c.Context(), page, limit)
 	if err != nil {
 		h.logger.ErrorContext(c.Context(), "get users failed", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to get users"})
+		return writeDomainError(c, err)
 	}
-	response := make([]dto.RegisterUserResponse, 0, len(accounts))
+	response := make([]dto.UserSummary, 0, len(accounts))
 	for _, account := range accounts {
-		response = append(response, toUserResponse(account))
+		response = append(response, dto.UserSummary{
+			ID: account.ID, Username: account.Username, Email: account.Email, Role: account.Role,
+		})
 	}
-	return c.JSON(response)
+	return c.JSON(dto.UserListResponse{Data: response, Page: page, Limit: limit, Total: total})
 }
 
 func (h *UserHandler) GetUserByID(c fiber.Ctx) error {
-	id, err := strconv.Atoi(c.Params("id"))
+	id, err := parseID(c)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
+		return err
 	}
 	account, err := h.users.GetByID(c.Context(), id)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
+		return writeDomainError(c, err)
 	}
 	return c.JSON(toUserResponse(account))
 }
 
 func (h *UserHandler) CreateUser(c fiber.Ctx) error {
 	var req dto.RegisterUserRequest
-	if err := c.Bind().Body(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
 	}
 	account := user.User{Username: req.Username, Email: req.Email, Password: req.Password}
 	if err := h.users.Create(c.Context(), &account); err != nil {
-		h.logger.ErrorContext(c.Context(), "create user failed", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to create user"})
+		return writeDomainError(c, err)
+	}
+	if err := h.verification.SendVerificationForUser(c.Context(), account.ID); err != nil {
+		h.logger.WarnContext(c.Context(), "send verification failed", "user_id", account.ID, "error", err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(toUserResponse(&account))
 }
 
 func (h *UserHandler) UpdateUser(c fiber.Ctx) error {
-	id, err := strconv.Atoi(c.Params("id"))
+	id, err := parseID(c)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
+		return err
 	}
 	var req dto.UpdateUserRequest
-	if err := c.Bind().Body(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
 	}
-	account := user.User{ID: id, Username: req.Username, Email: req.Email, Password: req.Password}
-	if err := h.users.Update(c.Context(), &account); err != nil {
-		h.logger.ErrorContext(c.Context(), "update user failed", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to update user"})
+	current, err := h.users.GetByID(c.Context(), id)
+	if err != nil {
+		return writeDomainError(c, err)
+	}
+	username, email := profileValues(req, current)
+	if err := h.users.UpdateProfile(c.Context(), id, username, email); err != nil {
+		return writeDomainError(c, err)
+	}
+	if err := h.verification.SendVerificationForUser(c.Context(), id); err != nil {
+		h.logger.WarnContext(c.Context(), "send verification failed", "user_id", id, "error", err)
 	}
 	updated, err := h.users.GetByID(c.Context(), id)
 	if err != nil {
-		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
+		return writeDomainError(c, err)
 	}
 	return c.JSON(toUserResponse(updated))
 }
 
-func (h *UserHandler) DeleteUser(c fiber.Ctx) error {
-	id, err := strconv.Atoi(c.Params("id"))
+func (h *UserHandler) UpdateSelf(c fiber.Ctx) error {
+	account, ok := currentUser(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	var req dto.UpdateUserRequest
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
+	}
+	username, email := profileValues(req, account)
+	if err := h.users.UpdateProfile(c.Context(), account.ID, username, email); err != nil {
+		return writeDomainError(c, err)
+	}
+	if err := h.verification.SendVerificationForUser(c.Context(), account.ID); err != nil {
+		h.logger.WarnContext(c.Context(), "send verification failed", "user_id", account.ID, "error", err)
+	}
+	updated, err := h.users.GetByID(c.Context(), account.ID)
 	if err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
+		return writeDomainError(c, err)
 	}
-	if err := h.users.Delete(c.Context(), id); err != nil {
-		h.logger.ErrorContext(c.Context(), "delete user failed", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to delete user"})
-	}
-	return c.JSON(fiber.Map{"message": "user deleted"})
+	return c.JSON(toUserResponse(updated))
 }
 
-func toUserResponse(account *user.User) dto.RegisterUserResponse {
-	return dto.RegisterUserResponse{ID: account.ID, Username: account.Username, Email: account.Email}
+func (h *UserHandler) ChangePassword(c fiber.Ctx) error {
+	account, ok := currentUser(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	var req dto.ChangePasswordRequest
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
+	}
+	if err := h.users.ChangePassword(c.Context(), account.ID, req.CurrentPassword, req.NewPassword); err != nil {
+		return writeDomainError(c, err)
+	}
+	return c.JSON(fiber.Map{"message": "password changed; sign in again"})
+}
+
+func (h *UserHandler) ChangeRole(c fiber.Ctx) error {
+	actor, ok := currentUser(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	targetID, err := parseID(c)
+	if err != nil {
+		return err
+	}
+	var req dto.ChangeRoleRequest
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
+	}
+	if err := h.users.ChangeRole(c.Context(), actor.ID, targetID, req.Role); err != nil {
+		return writeDomainError(c, err)
+	}
+	return c.JSON(fiber.Map{"message": "role changed"})
+}
+
+func (h *UserHandler) DeleteUser(c fiber.Ctx) error {
+	actor, ok := currentUser(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	targetID, err := parseID(c)
+	if err != nil {
+		return err
+	}
+	if err := h.users.Delete(c.Context(), actor.ID, targetID); err != nil {
+		return writeDomainError(c, err)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func (h *UserHandler) DeleteSelf(c fiber.Ctx) error {
+	account, ok := currentUser(c)
+	if !ok {
+		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
+	}
+	var req dto.DeleteSelfRequest
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
+	}
+	if err := h.users.DeleteSelf(c.Context(), account.ID, req.CurrentPassword); err != nil {
+		return writeDomainError(c, err)
+	}
+	return c.SendStatus(fiber.StatusNoContent)
+}
+
+func parseID(c fiber.Ctx) (int, error) {
+	id, err := strconv.Atoi(c.Params("id"))
+	if err != nil || id <= 0 {
+		return 0, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid user id"})
+	}
+	return id, nil
+}
+
+func toUserResponse(account *user.User) dto.UserResponse {
+	return dto.UserResponse{
+		ID: account.ID, Username: account.Username, Email: account.Email, Role: account.Role,
+		EmailVerified: account.EmailVerified(), PendingEmail: account.PendingEmail,
+	}
+}
+
+func profileValues(req dto.UpdateUserRequest, account *user.User) (string, string) {
+	username, email := account.Username, account.Email
+	if req.Username != nil {
+		username = *req.Username
+	}
+	if req.Email != nil {
+		email = *req.Email
+	}
+	return username, email
 }
