@@ -16,14 +16,12 @@ import (
 	"gorm.io/gorm"
 )
 
-// HTTPServices holds application services wired for the HTTP server.
 type HTTPServices struct {
 	Users  *user.Service
 	Auth   *auth.Service
 	Tokens *jwt.Service
 }
 
-// WireHTTPServices wires HTTP-facing application services.
 func WireHTTPServices(cfg *config.Config, db *gorm.DB, logger *slog.Logger, dispatcher queue.Dispatcher) HTTPServices {
 	repository := mysqlRepository(db)
 	hasher := password.Bcrypt{}
