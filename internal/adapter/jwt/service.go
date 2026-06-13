@@ -19,13 +19,20 @@ const (
 	tokenTypeRefresh = "refresh"
 )
 
+type tokenHeader struct {
+	Algorithm string `json:"alg"`
+	Type      string `json:"typ"`
+}
+
 type tokenClaims struct {
-	Subject   string `json:"sub"`
-	UserID    int    `json:"uid"`
-	JTI       string `json:"jti"`
-	TokenType string `json:"typ"`
-	ExpiresAt int64  `json:"exp"`
-	IssuedAt  int64  `json:"iat"`
+	Issuer       string `json:"iss"`
+	Audience     string `json:"aud"`
+	UserID       int    `json:"sub"`
+	TokenVersion int    `json:"ver"`
+	JTI          string `json:"jti"`
+	TokenType    string `json:"typ"`
+	ExpiresAt    int64  `json:"exp"`
+	IssuedAt     int64  `json:"iat"`
 }
 
 type Service struct {
@@ -33,22 +40,24 @@ type Service struct {
 	refreshSecret []byte
 	accessTTL     time.Duration
 	refreshTTL    time.Duration
+	issuer        string
+	audience      string
 }
 
-func NewService(accessSecret, refreshSecret string, accessTTLMinutes, refreshTTLHours int) *Service {
+func NewService(accessSecret, refreshSecret string, accessTTLMinutes, refreshTTLHours int, issuer, audience string) *Service {
 	return &Service{
 		accessSecret: []byte(accessSecret), refreshSecret: []byte(refreshSecret),
-		accessTTL:  time.Duration(accessTTLMinutes) * time.Minute,
-		refreshTTL: time.Duration(refreshTTLHours) * time.Hour,
+		accessTTL: time.Duration(accessTTLMinutes) * time.Minute, refreshTTL: time.Duration(refreshTTLHours) * time.Hour,
+		issuer: issuer, audience: audience,
 	}
 }
 
-func (s *Service) GenerateAccessToken(username string, userID int) (string, time.Time, error) {
-	return s.generate(username, userID, tokenTypeAccess, s.accessTTL, s.accessSecret)
+func (s *Service) GenerateAccessToken(userID, tokenVersion int) (string, time.Time, error) {
+	return s.generate(userID, tokenVersion, tokenTypeAccess, s.accessTTL, s.accessSecret)
 }
 
-func (s *Service) GenerateRefreshToken(username string, userID int) (string, time.Time, error) {
-	return s.generate(username, userID, tokenTypeRefresh, s.refreshTTL, s.refreshSecret)
+func (s *Service) GenerateRefreshToken(userID, tokenVersion int) (string, time.Time, error) {
+	return s.generate(userID, tokenVersion, tokenTypeRefresh, s.refreshTTL, s.refreshSecret)
 }
 
 func (s *Service) ValidateRefreshToken(token string) (auth.Claims, error) {
@@ -59,7 +68,7 @@ func (s *Service) ValidateAccessToken(token string) (auth.Claims, error) {
 	return s.validate(token, tokenTypeAccess, s.accessSecret)
 }
 
-func (s *Service) generate(username string, userID int, tokenType string, ttl time.Duration, secret []byte) (string, time.Time, error) {
+func (s *Service) generate(userID, tokenVersion int, tokenType string, ttl time.Duration, secret []byte) (string, time.Time, error) {
 	now := time.Now()
 	jti, err := generateJTI()
 	if err != nil {
@@ -67,8 +76,8 @@ func (s *Service) generate(username string, userID int, tokenType string, ttl ti
 	}
 	expiresAt := now.Add(ttl)
 	token, err := sign(tokenClaims{
-		Subject: username, UserID: userID, JTI: jti, TokenType: tokenType,
-		ExpiresAt: expiresAt.Unix(), IssuedAt: now.Unix(),
+		Issuer: s.issuer, Audience: s.audience, UserID: userID, TokenVersion: tokenVersion,
+		JTI: jti, TokenType: tokenType, ExpiresAt: expiresAt.Unix(), IssuedAt: now.Unix(),
 	}, secret)
 	return token, expiresAt, err
 }
@@ -76,6 +85,11 @@ func (s *Service) generate(username string, userID int, tokenType string, ttl ti
 func (s *Service) validate(token, expectedType string, secret []byte) (auth.Claims, error) {
 	parts := strings.Split(token, ".")
 	if len(parts) != 3 {
+		return auth.Claims{}, auth.ErrInvalidToken
+	}
+	var header tokenHeader
+	headerBytes, err := base64.RawURLEncoding.DecodeString(parts[0])
+	if err != nil || json.Unmarshal(headerBytes, &header) != nil || header.Algorithm != "HS256" || header.Type != "JWT" {
 		return auth.Claims{}, auth.ErrInvalidToken
 	}
 	signingInput := parts[0] + "." + parts[1]
@@ -93,20 +107,20 @@ func (s *Service) validate(token, expectedType string, secret []byte) (auth.Clai
 		return auth.Claims{}, auth.ErrInvalidToken
 	}
 	var claims tokenClaims
-	if err := json.Unmarshal(payload, &claims); err != nil {
-		return auth.Claims{}, auth.ErrInvalidToken
-	}
-	if claims.TokenType != expectedType {
+	if json.Unmarshal(payload, &claims) != nil || claims.TokenType != expectedType ||
+		claims.Issuer != s.issuer || claims.Audience != s.audience || claims.UserID <= 0 ||
+		claims.TokenVersion <= 0 || claims.JTI == "" || claims.IssuedAt <= 0 ||
+		claims.ExpiresAt <= claims.IssuedAt || claims.IssuedAt > time.Now().Add(time.Minute).Unix() {
 		return auth.Claims{}, auth.ErrInvalidToken
 	}
 	if time.Now().Unix() >= claims.ExpiresAt {
 		return auth.Claims{}, auth.ErrExpiredToken
 	}
-	return auth.Claims{Subject: claims.Subject, UserID: claims.UserID}, nil
+	return auth.Claims{UserID: claims.UserID, TokenVersion: claims.TokenVersion}, nil
 }
 
 func sign(claims tokenClaims, secret []byte) (string, error) {
-	header, err := json.Marshal(map[string]string{"alg": "HS256", "typ": "JWT"})
+	header, err := json.Marshal(tokenHeader{Algorithm: "HS256", Type: "JWT"})
 	if err != nil {
 		return "", err
 	}

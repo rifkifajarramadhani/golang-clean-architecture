@@ -1,5 +1,6 @@
 app:
   port: 8080
+  environment: development
 
 database:
   host: db
@@ -13,6 +14,10 @@ auth:
   jwt_refresh_secret: super-secret-refresh-key-change-me
   access_ttl_minutes: 15
   refresh_ttl_hours: 168
+  issuer: golang-clean-architecture
+  audience: golang-clean-architecture-api
+  verification_ttl_hours: 24
+  bootstrap_admin_email: ""
 
 redis:
   address: redis:6379

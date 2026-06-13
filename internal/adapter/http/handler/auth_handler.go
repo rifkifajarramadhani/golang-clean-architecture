@@ -15,7 +15,10 @@ type AuthService interface {
 	Register(context.Context, *user.User) error
 	Login(context.Context, string, string) (*appauth.Tokens, error)
 	Refresh(context.Context, string) (*appauth.Tokens, error)
-	Me(context.Context, string) (*user.User, error)
+	VerifyEmail(context.Context, string) error
+	ResendVerification(context.Context, string) error
+	SendVerificationForUser(context.Context, int) error
+	Me(context.Context, int) (*user.User, error)
 }
 
 type AuthHandler struct {
@@ -29,42 +32,47 @@ func NewAuthHandler(service AuthService, logger *slog.Logger) *AuthHandler {
 
 func (h *AuthHandler) Register(c fiber.Ctx) error {
 	var req dto.RegisterRequest
-	if err := c.Bind().Body(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
 	}
 	account := user.User{Username: req.Username, Email: req.Email, Password: req.Password}
 	if err := h.auth.Register(c.Context(), &account); err != nil {
-		if errors.Is(err, appauth.ErrDuplicateEmail) || errors.Is(err, appauth.ErrDuplicateUsername) {
-			return c.Status(fiber.StatusConflict).JSON(fiber.Map{"error": err.Error()})
+		if errors.Is(err, user.ErrInvalidInput) || errors.Is(err, user.ErrDuplicateEmail) || errors.Is(err, user.ErrDuplicateUsername) {
+			return writeDomainError(c, err)
 		}
 		h.logger.ErrorContext(c.Context(), "register failed", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to register"})
+		return writeDomainError(c, err)
 	}
 	return c.Status(fiber.StatusCreated).JSON(fiber.Map{
 		"id": account.ID, "username": account.Username, "email": account.Email,
+		"message": "check your email to verify your account",
 	})
 }
 
 func (h *AuthHandler) Login(c fiber.Ctx) error {
 	var req dto.LoginRequest
-	if err := c.Bind().Body(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
 	}
 	tokens, err := h.auth.Login(c.Context(), req.Email, req.Password)
 	if err != nil {
-		if errors.Is(err, appauth.ErrInvalidCredentials) {
+		switch {
+		case errors.Is(err, appauth.ErrInvalidCredentials):
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid credentials"})
+		case errors.Is(err, appauth.ErrEmailUnverified):
+			return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "email is not verified"})
+		default:
+			h.logger.ErrorContext(c.Context(), "login failed", "error", err)
+			return writeDomainError(c, err)
 		}
-		h.logger.ErrorContext(c.Context(), "login failed", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to login"})
 	}
 	return c.JSON(toAuthResponse(tokens))
 }
 
 func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 	var req dto.RefreshRequest
-	if err := c.Bind().Body(&req); err != nil {
-		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
 	}
 	tokens, err := h.auth.Refresh(c.Context(), req.RefreshToken)
 	if err != nil {
@@ -72,21 +80,46 @@ func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid refresh token"})
 		}
 		h.logger.ErrorContext(c.Context(), "refresh failed", "error", err)
-		return c.Status(fiber.StatusInternalServerError).JSON(fiber.Map{"error": "failed to refresh token"})
+		return writeDomainError(c, err)
 	}
 	return c.JSON(toAuthResponse(tokens))
 }
 
+func (h *AuthHandler) VerifyEmail(c fiber.Ctx) error {
+	var req dto.VerifyEmailRequest
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
+	}
+	if err := h.auth.VerifyEmail(c.Context(), req.Token); err != nil {
+		if errors.Is(err, appauth.ErrInvalidToken) {
+			return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid or expired verification token"})
+		}
+		h.logger.ErrorContext(c.Context(), "verify email failed", "error", err)
+		return writeDomainError(c, err)
+	}
+	return c.JSON(fiber.Map{"message": "email verified"})
+}
+
+func (h *AuthHandler) ResendVerification(c fiber.Ctx) error {
+	var req dto.ResendVerificationRequest
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
+	}
+	if err := h.auth.ResendVerification(c.Context(), req.Email); err != nil {
+		h.logger.ErrorContext(c.Context(), "resend verification failed", "error", err)
+	}
+	return c.JSON(fiber.Map{"message": "if the account requires verification, an email has been sent"})
+}
+
 func (h *AuthHandler) Me(c fiber.Ctx) error {
-	username, ok := c.Locals("auth_username").(string)
-	if !ok || username == "" {
+	account, ok := currentUser(c)
+	if !ok {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
-	account, err := h.auth.Me(c.Context(), username)
-	if err != nil {
-		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
-	}
-	return c.JSON(dto.MeResponse{ID: account.ID, Username: account.Username, Email: account.Email})
+	return c.JSON(dto.MeResponse{
+		ID: account.ID, Username: account.Username, Email: account.Email, Role: account.Role,
+		EmailVerified: account.EmailVerified(), PendingEmail: account.PendingEmail,
+	})
 }
 
 func toAuthResponse(tokens *appauth.Tokens) dto.AuthResponse {

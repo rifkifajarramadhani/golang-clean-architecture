@@ -62,10 +62,12 @@ Default values in this project:
 - DB user: `root`
 - DB password: `greygoose`
 - DB name: `db_name`
-- JWT access secret: `super-secret-access-key-change-me`
-- JWT refresh secret: `super-secret-refresh-key-change-me`
+- JWT access secret: `super-secret-access-key-change-me` (development only)
+- JWT refresh secret: `super-secret-refresh-key-change-me` (development only)
 - Access token TTL: `15` minutes
 - Refresh token TTL: `168` hours
+- Email verification TTL: `24` hours
+- Bootstrap admin email: unset; configure `AUTH_BOOTSTRAP_ADMIN_EMAIL`
 - Queue driver: `redis`
 - SMTP host: `mailpit:1025`
 - Default sender: `Golang Clean Architecture <hello@example.com>`
@@ -118,7 +120,7 @@ docker compose logs mailpit --tail=100
 ```
 
 Mailpit is available at [http://localhost:8025](http://localhost:8025). Registering
-a user queues a welcome email that the worker delivers to Mailpit.
+a user queues an email-verification message that the worker delivers to Mailpit.
 
 ### 4) Test API
 
@@ -128,7 +130,7 @@ curl -X POST http://localhost:8080/api/auth/register \
   -d '{
     "username": "rifki",
     "email": "rifki@example.com",
-    "password": "secret123"
+    "password": "long-password"
   }'
 ```
 
@@ -266,12 +268,19 @@ Base URL: `http://localhost:8080/api`
 - `POST /auth/register`
 - `POST /auth/login`
 - `POST /auth/refresh`
+- `POST /auth/verify-email`
+- `POST /auth/resend-verification`
 - Protected routes (require `Authorization: Bearer <access_token>`):
 - `GET /auth/me`
-- `GET /users`
+- `PATCH /users/me`
+- `PUT /users/me/password`
+- `DELETE /users/me`
+- Admin-only routes:
+- `GET /users?page=1&limit=20`
 - `GET /users/:id`
 - `POST /users`
 - `PUT /users/:id`
+- `PUT /users/:id/role`
 - `DELETE /users/:id`
 
 ### Login Example
@@ -281,7 +290,7 @@ curl -X POST http://localhost:8080/api/auth/login \
   -H 'Content-Type: application/json' \
   -d '{
     "email": "rifki@example.com",
-    "password": "secret123"
+    "password": "long-password"
   }'
 ```
 
@@ -298,9 +307,12 @@ curl http://localhost:8080/api/auth/me \
 - Worker runs via Air using `.air.worker.toml`.
 - Build target for Air is `./cmd/server` and binary output is `tmp/main`.
 - Configuration supports environment-variable overrides such as `DATABASE_HOST`, `QUEUE_DRIVER`, `QUEUE_DATABASE_POLL_INTERVAL_MILLISECONDS`, `QUEUE_DATABASE_RESERVATION_SECONDS`, `REDIS_ADDRESS`, and `MAIL_HOST`.
-- Password hashing is handled in the `usecase` layer.
+- Password hashing and current-password checks are handled in the core service.
 - Refresh tokens are persisted as SHA-256 hashes in `refresh_tokens` table.
-- Existing `/users` routes are now JWT-protected.
+- User-management routes require the `admin` role; self-service routes only operate on the authenticated account.
+- Login requires a verified email. Existing users are unverified after migration `000004` and must request verification.
+- The first verified account matching `AUTH_BOOTSTRAP_ADMIN_EMAIL` becomes admin only while no admin exists.
+- Non-development/non-test environments require distinct non-placeholder JWT secrets of at least 32 bytes.
 
 ## Troubleshooting
 
