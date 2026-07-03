@@ -93,6 +93,13 @@ This starts:
 - `redis` (default queue backend)
 - `mailpit` (local SMTP server and message inspector)
 
+Compose uses the Dockerfile's `development` target. A minimal, non-root
+production image can be built with:
+
+```bash
+docker build --target production -t golang-clean-architecture .
+```
+
 MySQL remains the application database and is required by the API and queue job
 handlers.
 
@@ -174,6 +181,10 @@ The worker, scheduler, schedule command, and queue command all use the configure
 
 Applications emit structured JSON logs to stdout and `logs/app.log`. Configure
 the level and file path with `LOGGING_LEVEL` and `LOGGING_FILE`.
+
+The server exposes `GET /health/live` for process health and
+`GET /health/ready` for database readiness. Every HTTP response includes an
+`X-Request-ID`, and access logs include that identifier.
 
 ## Quality Checks
 

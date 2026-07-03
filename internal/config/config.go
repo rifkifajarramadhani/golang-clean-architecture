@@ -1,10 +1,15 @@
 package config
 
 import (
+	"errors"
 	"fmt"
 	stdmail "net/mail"
+	"net/url"
+	"strconv"
 	"strings"
+	"time"
 
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/spf13/viper"
 )
 
@@ -98,9 +103,17 @@ func Load() (*Config, error) {
 	instance.AddConfigPath("./configs")
 	instance.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	instance.AutomaticEnv()
+	for _, key := range configKeys {
+		if err := instance.BindEnv(key); err != nil {
+			return nil, fmt.Errorf("bind environment key %s: %w", key, err)
+		}
+	}
 
 	if err := instance.ReadInConfig(); err != nil {
-		return nil, err
+		var notFound viper.ConfigFileNotFoundError
+		if !errors.As(err, &notFound) {
+			return nil, err
+		}
 	}
 
 	var config Config
@@ -117,16 +130,57 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 	normalizeLoggingConfig(&config.Logging)
+	if err := validateConfig(&config); err != nil {
+		return nil, err
+	}
 
-	config.Database.DSN = fmt.Sprintf("%s:%s@tcp(%s:%d)/%s?charset=utf8mb4&parseTime=True&loc=Local",
-		config.Database.User,
-		config.Database.Password,
-		config.Database.Host,
-		config.Database.Port,
-		config.Database.Name,
-	)
+	dsn := mysqldriver.NewConfig()
+	dsn.User = config.Database.User
+	dsn.Passwd = config.Database.Password
+	dsn.Net = "tcp"
+	dsn.Addr = config.Database.Host + ":" + strconv.Itoa(config.Database.Port)
+	dsn.DBName = config.Database.Name
+	dsn.ParseTime = true
+	dsn.Collation = "utf8mb4_unicode_ci"
+	dsn.Loc = time.UTC
+	config.Database.DSN = dsn.FormatDSN()
 
 	return &config, nil
+}
+
+var configKeys = []string{
+	"app.port", "app.environment",
+	"database.host", "database.port", "database.user", "database.password", "database.name",
+	"auth.jwt_access_secret", "auth.jwt_refresh_secret", "auth.access_ttl_minutes", "auth.refresh_ttl_hours",
+	"auth.issuer", "auth.audience", "auth.verification_ttl_hours", "auth.bootstrap_admin_email",
+	"redis.address", "redis.password", "redis.db",
+	"queue.driver", "queue.concurrency", "queue.shutdown_seconds", "queue.queues",
+	"queue.database.poll_interval_milliseconds", "queue.database.reservation_seconds",
+	"scheduler.timezone", "mail.host", "mail.port", "mail.username", "mail.password", "mail.encryption",
+	"mail.from_address", "mail.from_name", "logging.level", "logging.file",
+}
+
+func validateConfig(config *Config) error {
+	port, err := strconv.Atoi(config.App.Port)
+	if err != nil || port < 1 || port > 65535 {
+		return fmt.Errorf("app port must be between 1 and 65535")
+	}
+	if strings.TrimSpace(config.Database.Host) == "" || config.Database.Port < 1 || config.Database.Port > 65535 ||
+		strings.TrimSpace(config.Database.User) == "" || strings.TrimSpace(config.Database.Name) == "" {
+		return fmt.Errorf("database host, port, user, and name must be valid")
+	}
+	if _, err := url.Parse("redis://" + config.Redis.Address); err != nil || strings.TrimSpace(config.Redis.Address) == "" {
+		return fmt.Errorf("redis address must be valid")
+	}
+	if len(config.Queue.Queues) == 0 {
+		return fmt.Errorf("at least one queue must be configured")
+	}
+	for name, weight := range config.Queue.Queues {
+		if strings.TrimSpace(name) == "" || weight <= 0 {
+			return fmt.Errorf("queue names must be non-empty and weights must be positive")
+		}
+	}
+	return nil
 }
 
 func normalizeAuthConfig(app *AppConfig, auth *AuthConfig) error {

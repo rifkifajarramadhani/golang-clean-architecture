@@ -12,13 +12,16 @@ import (
 type userStoreFake struct {
 	created *user.User
 	account *user.User
+	token   *EmailVerificationToken
 }
 
-func (r *userStoreFake) CreateUser(_ context.Context, account *user.User) error {
+func (r *userStoreFake) RegisterUser(_ context.Context, account *user.User, token *EmailVerificationToken, dispatch func() error) error {
 	account.ID = 42
+	token.UserID = account.ID
+	r.token = token
 	copy := *account
 	r.created = &copy
-	return nil
+	return dispatch()
 }
 func (r *userStoreFake) GetUserByID(context.Context, int) (*user.User, error) {
 	if r.account == nil {
@@ -53,6 +56,11 @@ func (r *refreshTokenRepoFake) RevokeRefreshTokenByHash(context.Context, string)
 	r.revoked = true
 	return nil
 }
+func (r *refreshTokenRepoFake) RotateRefreshToken(_ context.Context, _ string, token *RefreshToken) error {
+	r.revoked = true
+	r.stored = token
+	return nil
+}
 
 type verificationRepoFake struct {
 	token  *EmailVerificationToken
@@ -64,8 +72,11 @@ func (r *verificationRepoFake) ReplaceEmailVerificationToken(_ context.Context, 
 	r.token = token
 	return nil
 }
-func (r *verificationRepoFake) VerifyEmail(context.Context, string, string, time.Time) (*EmailVerificationResult, error) {
+func (r *verificationRepoFake) VerifyEmail(context.Context, string, time.Time, VerificationRolePolicy) (*EmailVerificationResult, error) {
 	return r.result, r.err
+}
+func (*verificationRepoFake) CanIssueEmailVerification(context.Context, int, time.Time) (bool, error) {
+	return true, nil
 }
 
 type passwordFake struct{}
@@ -96,13 +107,15 @@ type welcomeNotifierFake struct {
 	account user.User
 }
 
-func (n *welcomeNotifierFake) NotifyWelcome(_ context.Context, account user.User) {
+func (n *welcomeNotifierFake) NotifyWelcome(_ context.Context, account user.User) error {
 	n.called++
 	n.account = account
+	return nil
 }
 
-func (n *notifierFake) NotifyVerification(_ context.Context, account user.User, token string) {
+func (n *notifierFake) NotifyVerification(_ context.Context, account user.User, token string) error {
 	n.called, n.token, n.email = true, token, account.Email
+	return nil
 }
 
 func TestResendVerificationTargetsPendingEmail(t *testing.T) {
@@ -136,7 +149,7 @@ func TestRegisterHashesPasswordAndSendsSingleUseVerification(t *testing.T) {
 	if users.created == nil || account.Password != "hashed" || account.Role != user.RoleUser || !notifier.called {
 		t.Fatalf("unexpected registration: account=%+v notified=%v", account, notifier.called)
 	}
-	if verification.token == nil || verification.token.TokenHash == notifier.token {
+	if users.token == nil || users.token.TokenHash == notifier.token {
 		t.Fatal("verification token was not stored as a hash")
 	}
 }

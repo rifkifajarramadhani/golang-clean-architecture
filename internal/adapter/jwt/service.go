@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/auth"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/clock"
 )
 
 const (
@@ -42,6 +43,7 @@ type Service struct {
 	refreshTTL    time.Duration
 	issuer        string
 	audience      string
+	clock         clock.Clock
 }
 
 func NewService(accessSecret, refreshSecret string, accessTTLMinutes, refreshTTLHours int, issuer, audience string) *Service {
@@ -49,6 +51,14 @@ func NewService(accessSecret, refreshSecret string, accessTTLMinutes, refreshTTL
 		accessSecret: []byte(accessSecret), refreshSecret: []byte(refreshSecret),
 		accessTTL: time.Duration(accessTTLMinutes) * time.Minute, refreshTTL: time.Duration(refreshTTLHours) * time.Hour,
 		issuer: issuer, audience: audience,
+		clock: clock.Real{},
+	}
+}
+
+// SetClock replaces the wall clock used to issue and validate tokens.
+func (s *Service) SetClock(value clock.Clock) {
+	if value != nil {
+		s.clock = value
 	}
 }
 
@@ -69,7 +79,7 @@ func (s *Service) ValidateAccessToken(token string) (auth.Claims, error) {
 }
 
 func (s *Service) generate(userID, tokenVersion int, tokenType string, ttl time.Duration, secret []byte) (string, time.Time, error) {
-	now := time.Now()
+	now := s.clock.Now()
 	jti, err := generateJTI()
 	if err != nil {
 		return "", time.Time{}, fmt.Errorf("generate token identifier: %w", err)
@@ -110,10 +120,10 @@ func (s *Service) validate(token, expectedType string, secret []byte) (auth.Clai
 	if json.Unmarshal(payload, &claims) != nil || claims.TokenType != expectedType ||
 		claims.Issuer != s.issuer || claims.Audience != s.audience || claims.UserID <= 0 ||
 		claims.TokenVersion <= 0 || claims.JTI == "" || claims.IssuedAt <= 0 ||
-		claims.ExpiresAt <= claims.IssuedAt || claims.IssuedAt > time.Now().Add(time.Minute).Unix() {
+		claims.ExpiresAt <= claims.IssuedAt || claims.IssuedAt > s.clock.Now().Add(time.Minute).Unix() {
 		return auth.Claims{}, auth.ErrInvalidToken
 	}
-	if time.Now().Unix() >= claims.ExpiresAt {
+	if s.clock.Now().Unix() >= claims.ExpiresAt {
 		return auth.Claims{}, auth.ErrExpiredToken
 	}
 	return auth.Claims{UserID: claims.UserID, TokenVersion: claims.TokenVersion}, nil

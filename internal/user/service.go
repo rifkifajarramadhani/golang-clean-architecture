@@ -20,9 +20,10 @@ type Repository interface {
 	Create(context.Context, *User) error
 	List(context.Context, int, int) ([]*User, int64, error)
 	GetByID(context.Context, int) (*User, error)
+	CountAdmins(context.Context) (int64, error)
 	UpdateProfile(context.Context, int, string, string) error
 	ChangePassword(context.Context, int, string) error
-	ChangeRole(context.Context, int, int, string) error
+	ChangeRole(context.Context, int, int, Role) error
 	Delete(context.Context, int) error
 }
 
@@ -67,11 +68,18 @@ func (s *Service) GetByID(ctx context.Context, id int) (*User, error) {
 }
 
 func (s *Service) UpdateProfile(ctx context.Context, id int, username, email string) error {
-	account := &User{Username: username, Email: email}
-	if err := NormalizeAndValidate(account, false); err != nil {
+	account, err := s.repo.GetByID(ctx, id)
+	if err != nil {
 		return err
 	}
-	return s.repo.UpdateProfile(ctx, id, account.Username, account.Email)
+	if err := account.UpdateProfile(username, email); err != nil {
+		return err
+	}
+	nextEmail := account.Email
+	if account.PendingEmail != "" {
+		nextEmail = account.PendingEmail
+	}
+	return s.repo.UpdateProfile(ctx, id, account.Username, nextEmail)
 }
 
 func (s *Service) ChangePassword(ctx context.Context, id int, currentPassword, newPassword string) error {
@@ -89,23 +97,65 @@ func (s *Service) ChangePassword(ctx context.Context, id int, currentPassword, n
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
-	return s.repo.ChangePassword(ctx, id, hashed)
+	account.ChangePasswordHash(hashed)
+	return s.repo.ChangePassword(ctx, id, account.Password)
 }
 
 func (s *Service) ChangeRole(ctx context.Context, actorID, targetID int, role string) error {
-	role = strings.ToLower(strings.TrimSpace(role))
-	if role != RoleUser && role != RoleAdmin {
-		return ErrInvalidRole
+	parsedRole, err := ParseRole(strings.ToLower(strings.TrimSpace(role)))
+	if err != nil {
+		return err
 	}
 	if actorID == targetID {
 		return ErrForbidden
 	}
-	return s.repo.ChangeRole(ctx, actorID, targetID, role)
+	actor, err := s.repo.GetByID(ctx, actorID)
+	if err != nil || actor == nil || !actor.IsAdmin() {
+		return ErrForbidden
+	}
+	target, err := s.repo.GetByID(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	if parsedRole == RoleAdmin && !target.CanPromote() {
+		return ErrForbidden
+	}
+	wasAdmin := target.IsAdmin()
+	if wasAdmin && parsedRole != RoleAdmin {
+		count, err := s.repo.CountAdmins(ctx)
+		if err != nil {
+			return err
+		}
+		if count <= 1 {
+			return ErrLastAdmin
+		}
+	}
+	if err := target.AssignRole(parsedRole); err != nil {
+		return err
+	}
+	return s.repo.ChangeRole(ctx, actorID, targetID, parsedRole)
 }
 
 func (s *Service) Delete(ctx context.Context, actorID, targetID int) error {
 	if actorID == targetID {
 		return ErrForbidden
+	}
+	actor, err := s.repo.GetByID(ctx, actorID)
+	if err != nil || actor == nil || !actor.IsAdmin() {
+		return ErrForbidden
+	}
+	target, err := s.repo.GetByID(ctx, targetID)
+	if err != nil {
+		return err
+	}
+	if target.IsAdmin() {
+		count, err := s.repo.CountAdmins(ctx)
+		if err != nil {
+			return err
+		}
+		if count <= 1 {
+			return ErrLastAdmin
+		}
 	}
 	return s.repo.Delete(ctx, targetID)
 }

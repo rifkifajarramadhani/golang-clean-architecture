@@ -10,11 +10,12 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/clock"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/user"
 )
 
 type UserStore interface {
-	CreateUser(context.Context, *user.User) error
+	RegisterUser(context.Context, *user.User, *EmailVerificationToken, func() error) error
 	GetUserByID(context.Context, int) (*user.User, error)
 	GetUserByEmail(context.Context, string) (*user.User, error)
 	GetUserByEmailOrPending(context.Context, string) (*user.User, error)
@@ -24,11 +25,13 @@ type RefreshTokenRepository interface {
 	CreateRefreshToken(context.Context, *RefreshToken) error
 	GetActiveRefreshTokenByHash(context.Context, string) (*RefreshToken, error)
 	RevokeRefreshTokenByHash(context.Context, string) error
+	RotateRefreshToken(context.Context, string, *RefreshToken) error
 }
 
 type VerificationRepository interface {
 	ReplaceEmailVerificationToken(context.Context, *EmailVerificationToken) error
-	VerifyEmail(context.Context, string, string, time.Time) (*EmailVerificationResult, error)
+	VerifyEmail(context.Context, string, time.Time, VerificationRolePolicy) (*EmailVerificationResult, error)
+	CanIssueEmailVerification(context.Context, int, time.Time) (bool, error)
 }
 
 type TokenService interface {
@@ -43,11 +46,11 @@ type PasswordHasher interface {
 }
 
 type VerificationNotifier interface {
-	NotifyVerification(context.Context, user.User, string)
+	NotifyVerification(context.Context, user.User, string) error
 }
 
 type WelcomeNotifier interface {
-	NotifyWelcome(context.Context, user.User)
+	NotifyWelcome(context.Context, user.User) error
 }
 
 type Claims struct {
@@ -72,6 +75,7 @@ type Service struct {
 	welcome         WelcomeNotifier
 	verificationTTL time.Duration
 	bootstrapEmail  string
+	clock           clock.Clock
 }
 
 func NewService(
@@ -88,6 +92,15 @@ func NewService(
 	return &Service{
 		users: users, refresh: refresh, verification: verification, tokens: tokens, password: password,
 		notifier: notifier, welcome: welcome, verificationTTL: verificationTTL, bootstrapEmail: user.NormalizeEmail(bootstrapEmail),
+		clock: clock.Real{},
+	}
+}
+
+// SetClock replaces the wall clock used by the service. It is intended for
+// deterministic tests and process-level composition.
+func (s *Service) SetClock(value clock.Clock) {
+	if value != nil {
+		s.clock = value
 	}
 }
 
@@ -102,10 +115,22 @@ func (s *Service) Register(ctx context.Context, account *user.User) error {
 	account.Password = hashedPassword
 	account.Role = user.RoleUser
 	account.TokenVersion = 1
-	if err := s.users.CreateUser(ctx, account); err != nil {
-		return fmt.Errorf("create user: %w", err)
+	token, err := randomToken()
+	if err != nil {
+		return fmt.Errorf("generate verification token: %w", err)
 	}
-	return s.sendVerification(ctx, account)
+	verification := &EmailVerificationToken{
+		TokenHash: hashToken(token), ExpiresAt: s.clock.Now().Add(s.verificationTTL),
+	}
+	if err := s.users.RegisterUser(ctx, account, verification, func() error {
+		if s.notifier == nil {
+			return nil
+		}
+		return s.notifier.NotifyVerification(ctx, *account, token)
+	}); err != nil {
+		return fmt.Errorf("register user: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) ResendVerification(ctx context.Context, email string) error {
@@ -140,7 +165,13 @@ func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 	if token == "" {
 		return ErrInvalidToken
 	}
-	result, err := s.verification.VerifyEmail(ctx, hashToken(token), s.bootstrapEmail, time.Now())
+	rolePolicy := func(account user.User, adminCount int64) (user.Role, error) {
+		if s.bootstrapEmail != "" && account.Email == s.bootstrapEmail && adminCount == 0 {
+			return user.RoleAdmin, nil
+		}
+		return account.Role, nil
+	}
+	result, err := s.verification.VerifyEmail(ctx, hashToken(token), s.clock.Now(), rolePolicy)
 	if err != nil {
 		if errors.Is(err, ErrInvalidToken) {
 			return ErrInvalidToken
@@ -148,7 +179,9 @@ func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 		return fmt.Errorf("verify email: %w", err)
 	}
 	if result != nil && result.FirstVerification && result.User != nil && s.welcome != nil {
-		s.welcome.NotifyWelcome(ctx, *result.User)
+		// Verification is already committed. A welcome message is best-effort and
+		// can be retried independently without reverting the verified account.
+		_ = s.welcome.NotifyWelcome(ctx, *result.User)
 	}
 	return nil
 }
@@ -190,10 +223,23 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Tokens, er
 	if err != nil || account == nil || account.TokenVersion != claims.TokenVersion || !account.EmailVerified() {
 		return nil, ErrUnauthorized
 	}
-	if err := s.refresh.RevokeRefreshTokenByHash(ctx, tokenHash); err != nil {
-		return nil, fmt.Errorf("revoke refresh token: %w", err)
+	accessToken, accessExp, err := s.tokens.GenerateAccessToken(account.ID, account.TokenVersion)
+	if err != nil {
+		return nil, fmt.Errorf("generate access token: %w", err)
 	}
-	return s.issueTokens(ctx, account)
+	newRefreshToken, refreshExp, err := s.tokens.GenerateRefreshToken(account.ID, account.TokenVersion)
+	if err != nil {
+		return nil, fmt.Errorf("generate refresh token: %w", err)
+	}
+	if err := s.refresh.RotateRefreshToken(ctx, tokenHash, &RefreshToken{
+		UserID: account.ID, TokenHash: hashToken(newRefreshToken), ExpiresAt: refreshExp,
+	}); err != nil {
+		return nil, fmt.Errorf("rotate refresh token: %w", err)
+	}
+	return &Tokens{
+		AccessToken: accessToken, AccessExpiresAt: accessExp,
+		RefreshToken: newRefreshToken, RefreshExpiresAt: refreshExp,
+	}, nil
 }
 
 func (s *Service) Me(ctx context.Context, userID int) (*user.User, error) {
@@ -208,12 +254,19 @@ func (s *Service) Me(ctx context.Context, userID int) (*user.User, error) {
 }
 
 func (s *Service) sendVerification(ctx context.Context, account *user.User) error {
+	allowed, err := s.verification.CanIssueEmailVerification(ctx, account.ID, s.clock.Now().Add(-time.Minute))
+	if err != nil {
+		return fmt.Errorf("check verification rate: %w", err)
+	}
+	if !allowed {
+		return ErrVerificationRate
+	}
 	token, err := randomToken()
 	if err != nil {
 		return fmt.Errorf("generate verification token: %w", err)
 	}
 	if err := s.verification.ReplaceEmailVerificationToken(ctx, &EmailVerificationToken{
-		UserID: account.ID, TokenHash: hashToken(token), ExpiresAt: time.Now().Add(s.verificationTTL),
+		UserID: account.ID, TokenHash: hashToken(token), ExpiresAt: s.clock.Now().Add(s.verificationTTL),
 	}); err != nil {
 		return fmt.Errorf("store verification token: %w", err)
 	}
@@ -222,7 +275,9 @@ func (s *Service) sendVerification(ctx context.Context, account *user.User) erro
 		if recipient.PendingEmail != "" {
 			recipient.Email = recipient.PendingEmail
 		}
-		s.notifier.NotifyVerification(ctx, recipient, token)
+		if err := s.notifier.NotifyVerification(ctx, recipient, token); err != nil {
+			return fmt.Errorf("notify verification: %w", err)
+		}
 	}
 	return nil
 }

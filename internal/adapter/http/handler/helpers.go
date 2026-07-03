@@ -41,6 +41,8 @@ func writeDomainError(c fiber.Ctx, err error) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	case errors.Is(err, user.ErrForbidden):
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
+	case errors.Is(err, appauth.ErrVerificationRate):
+		return c.Status(fiber.StatusTooManyRequests).JSON(fiber.Map{"error": "verification requested too recently"})
 	case errors.Is(err, user.ErrNotFound):
 		return c.Status(fiber.StatusNotFound).JSON(fiber.Map{"error": "user not found"})
 	case errors.Is(err, user.ErrDuplicateEmail), errors.Is(err, user.ErrDuplicateUsername), errors.Is(err, user.ErrLastAdmin):

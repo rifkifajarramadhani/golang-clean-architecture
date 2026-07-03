@@ -6,11 +6,26 @@ import (
 
 	"github.com/gofiber/fiber/v3"
 	"github.com/gofiber/fiber/v3/middleware/limiter"
+	"github.com/google/uuid"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/http/handler"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/http/middleware"
 )
 
 func Setup(app *fiber.App, users handler.UserService, auth handler.AuthService, tokens middleware.AccessTokenValidator, logger *slog.Logger) {
+	app.Use(func(c fiber.Ctx) error {
+		requestID := c.Get("X-Request-ID")
+		if requestID == "" {
+			requestID = uuid.NewString()
+		}
+		c.Set("X-Request-ID", requestID)
+		started := time.Now()
+		err := c.Next()
+		logger.InfoContext(c.Context(), "http request",
+			"request_id", requestID, "method", c.Method(), "path", c.Path(),
+			"status", c.Response().StatusCode(), "duration", time.Since(started),
+		)
+		return err
+	})
 	api := app.Group("/api")
 	authGroup := api.Group("/auth", limiter.New(limiter.Config{
 		Max: 20, Expiration: time.Minute,

@@ -6,6 +6,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: development
     command: air -c .air.toml
     ports:
       - "8080:8080"
@@ -24,6 +25,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: development
     command: air -c .air.worker.toml
     volumes:
       - .:/app
@@ -43,6 +45,7 @@ services:
     build:
       context: .
       dockerfile: Dockerfile
+      target: development
     command: go run ./cmd/scheduler
     volumes:
       - .:/app

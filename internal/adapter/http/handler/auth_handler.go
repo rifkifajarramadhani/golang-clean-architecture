@@ -117,7 +117,7 @@ func (h *AuthHandler) Me(c fiber.Ctx) error {
 		return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 	}
 	return c.JSON(dto.MeResponse{
-		ID: account.ID, Username: account.Username, Email: account.Email, Role: account.Role,
+		ID: account.ID, Username: account.Username, Email: account.Email, Role: string(account.Role),
 		EmailVerified: account.EmailVerified(), PendingEmail: account.PendingEmail,
 	})
 }

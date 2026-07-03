@@ -42,8 +42,9 @@ func TestRetryDelayUsesCappedExponentialBackoff(t *testing.T) {
 
 func TestDispatchLocksPreserveTaskAndUniqueSemantics(t *testing.T) {
 	options := queue.DispatchOptions{TaskID: "scheduled-task", UniqueFor: time.Minute}
-	first := dispatchLocks("job-one", "default", "demo", []byte(`{"message":"hello"}`), options)
-	second := dispatchLocks("job-two", "default", "demo", []byte(`{"message":"hello"}`), options)
+	now := time.Now()
+	first := dispatchLocks("job-one", "default", "demo", []byte(`{"message":"hello"}`), options, now)
+	second := dispatchLocks("job-two", "default", "demo", []byte(`{"message":"hello"}`), options, now)
 
 	if len(first) != 2 || len(second) != 2 {
 		t.Fatalf("locks = %d and %d, want 2 each", len(first), len(second))

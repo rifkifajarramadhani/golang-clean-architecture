@@ -10,7 +10,7 @@ type repositoryFake struct {
 	created     *User
 	account     *User
 	changedHash string
-	changedRole string
+	changedRole Role
 	deletedID   int
 }
 
@@ -27,12 +27,13 @@ func (r *repositoryFake) GetByID(context.Context, int) (*User, error) {
 	copy := *r.account
 	return &copy, nil
 }
+func (r *repositoryFake) CountAdmins(context.Context) (int64, error)             { return 1, nil }
 func (*repositoryFake) UpdateProfile(context.Context, int, string, string) error { return nil }
 func (r *repositoryFake) ChangePassword(_ context.Context, _ int, hash string) error {
 	r.changedHash = hash
 	return nil
 }
-func (r *repositoryFake) ChangeRole(_ context.Context, _, _ int, role string) error {
+func (r *repositoryFake) ChangeRole(_ context.Context, _, _ int, role Role) error {
 	r.changedRole = role
 	return nil
 }

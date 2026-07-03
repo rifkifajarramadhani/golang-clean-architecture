@@ -85,7 +85,7 @@ func TestJWTAuthResolvesCurrentUserAndRejectsStaleOrDeletedAccounts(t *testing.T
 
 func TestAdminOnly(t *testing.T) {
 	tests := []struct {
-		role string
+		role user.Role
 		want int
 	}{
 		{user.RoleAdmin, fiber.StatusOK},

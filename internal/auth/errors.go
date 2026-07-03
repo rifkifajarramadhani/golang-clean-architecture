@@ -8,4 +8,5 @@ var (
 	ErrInvalidToken       = errors.New("invalid token")
 	ErrExpiredToken       = errors.New("token expired")
 	ErrEmailUnverified    = errors.New("email is not verified")
+	ErrVerificationRate   = errors.New("verification request rate exceeded")
 )

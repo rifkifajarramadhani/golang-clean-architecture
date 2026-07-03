@@ -36,9 +36,17 @@ func NewUserHandler(service UserService, verification VerificationSender, logger
 }
 
 func (h *UserHandler) GetUsers(c fiber.Ctx) error {
-	page, _ := strconv.Atoi(c.Query("page", "1"))
-	limit, _ := strconv.Atoi(c.Query("limit", "20"))
-	page, limit = user.NormalizePagination(page, limit)
+	page, err := parsePositiveQuery(c, "page", user.DefaultPage)
+	if err != nil {
+		return err
+	}
+	limit, err := parsePositiveQuery(c, "limit", user.DefaultLimit)
+	if err != nil {
+		return err
+	}
+	if limit > user.MaxLimit {
+		return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "limit must not exceed 100"})
+	}
 	accounts, total, err := h.users.List(c.Context(), page, limit)
 	if err != nil {
 		h.logger.ErrorContext(c.Context(), "get users failed", "error", err)
@@ -47,10 +55,22 @@ func (h *UserHandler) GetUsers(c fiber.Ctx) error {
 	response := make([]dto.UserSummary, 0, len(accounts))
 	for _, account := range accounts {
 		response = append(response, dto.UserSummary{
-			ID: account.ID, Username: account.Username, Email: account.Email, Role: account.Role,
+			ID: account.ID, Username: account.Username, Email: account.Email, Role: string(account.Role),
 		})
 	}
 	return c.JSON(dto.UserListResponse{Data: response, Page: page, Limit: limit, Total: total})
+}
+
+func parsePositiveQuery(c fiber.Ctx, name string, fallback int) (int, error) {
+	raw := c.Query(name)
+	if raw == "" {
+		return fallback, nil
+	}
+	value, err := strconv.Atoi(raw)
+	if err != nil || value <= 0 {
+		return 0, c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": name + " must be a positive integer"})
+	}
+	return value, nil
 }
 
 func (h *UserHandler) GetUserByID(c fiber.Ctx) error {
@@ -204,7 +224,7 @@ func parseID(c fiber.Ctx) (int, error) {
 
 func toUserResponse(account *user.User) dto.UserResponse {
 	return dto.UserResponse{
-		ID: account.ID, Username: account.Username, Email: account.Email, Role: account.Role,
+		ID: account.ID, Username: account.Username, Email: account.Email, Role: string(account.Role),
 		EmailVerified: account.EmailVerified(), PendingEmail: account.PendingEmail,
 	}
 }

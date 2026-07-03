@@ -14,6 +14,7 @@ import (
 
 	mysqlDriver "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
+	appclock "github.com/rifkifajarramadhani/golang-clean-architecture/internal/clock"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
 	"gorm.io/gorm"
@@ -29,48 +30,9 @@ const (
 	defaultMaxRetry    = 25
 )
 
-type databaseJob struct {
-	ID             string
-	Queue          string
-	Type           string
-	Payload        []byte
-	Status         string
-	Attempts       int
-	MaxRetry       int
-	TimeoutSeconds int
-	RetentionSecs  int
-	AvailableAt    time.Time
-	LeaseToken     *string
-	LeasedUntil    *time.Time
-	LastError      *string
-	LastFailedAt   *time.Time
-	CompletedAt    *time.Time
-	ExpiresAt      *time.Time
-	CreatedAt      time.Time
-	UpdatedAt      time.Time
-}
-
-func (databaseJob) TableName() string { return "queue_jobs" }
-
-type databaseLock struct {
-	LockKey   string
-	JobID     string
-	ExpiresAt *time.Time
-	CreatedAt time.Time
-}
-
-func (databaseLock) TableName() string { return "queue_locks" }
-
-type databaseStat struct {
-	Queue          string
-	ProcessedTotal int64
-	UpdatedAt      time.Time
-}
-
-func (databaseStat) TableName() string { return "queue_stats" }
-
 type DatabaseDispatcher struct {
-	db *gorm.DB
+	db    *gorm.DB
+	clock appclock.Clock
 }
 
 type DatabaseWorker struct {
@@ -82,15 +44,23 @@ type DatabaseWorker struct {
 	reservation     time.Duration
 	shutdownTimeout time.Duration
 	logger          *slog.Logger
+	clock           appclock.Clock
 }
 
 type DatabaseInspector struct {
 	db     *gorm.DB
 	queues map[string]int
+	clock  appclock.Clock
 }
 
 func NewDatabaseDispatcher(db *gorm.DB) *DatabaseDispatcher {
-	return &DatabaseDispatcher{db: db}
+	return &DatabaseDispatcher{db: db, clock: appclock.Real{}}
+}
+
+func (d *DatabaseDispatcher) SetClock(value appclock.Clock) {
+	if value != nil {
+		d.clock = value
+	}
 }
 
 func (d *DatabaseDispatcher) Close() error { return nil }
@@ -106,7 +76,7 @@ func (d *DatabaseDispatcher) Dispatch(ctx context.Context, job queue.Job, option
 	}
 	availableAt := options.ProcessAt
 	if availableAt.IsZero() {
-		availableAt = time.Now()
+		availableAt = d.clock.Now()
 	}
 	maxRetry := options.MaxRetry
 	if maxRetry <= 0 {
@@ -123,12 +93,12 @@ func (d *DatabaseDispatcher) Dispatch(ctx context.Context, job queue.Job, option
 		RetentionSecs:  durationSeconds(options.Retention),
 		AvailableAt:    availableAt,
 	}
-	locks := dispatchLocks(record.ID, queueName, job.Type(), payload, options)
+	locks := dispatchLocks(record.ID, queueName, job.Type(), payload, options, d.clock.Now())
 
 	err = d.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		for _, lock := range locks {
 			if lock.ExpiresAt != nil {
-				if err := tx.Where("lock_key = ? AND expires_at <= ?", lock.LockKey, time.Now()).Delete(&databaseLock{}).Error; err != nil {
+				if err := tx.Where("lock_key = ? AND expires_at <= ?", lock.LockKey, d.clock.Now()).Delete(&databaseLock{}).Error; err != nil {
 					return err
 				}
 			}
@@ -166,6 +136,13 @@ func NewDatabaseWorker(db *gorm.DB, cfg config.QueueConfig, registry *queue.Hand
 		reservation:     time.Duration(cfg.Database.ReservationSeconds) * time.Second,
 		shutdownTimeout: time.Duration(cfg.ShutdownSeconds) * time.Second,
 		logger:          logger,
+		clock:           appclock.Real{},
+	}
+}
+
+func (w *DatabaseWorker) SetClock(value appclock.Clock) {
+	if value != nil {
+		w.clock = value
 	}
 }
 
@@ -231,7 +208,7 @@ func (w *DatabaseWorker) runLoop(ctx context.Context, offset int) {
 
 func (w *DatabaseWorker) reserve(ctx context.Context, queueName string) (*databaseJob, error) {
 	var job databaseJob
-	now := time.Now()
+	now := w.clock.Now()
 	w.cleanup(ctx, now)
 	err := w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
@@ -323,7 +300,7 @@ func (w *DatabaseWorker) heartbeat(ctx context.Context, job *databaseJob, done <
 		case <-ticker.C:
 			if err := w.db.WithContext(ctx).Model(&databaseJob{}).
 				Where("id = ? AND status = ? AND lease_token = ?", job.ID, jobStatusActive, *job.LeaseToken).
-				Update("leased_until", time.Now().Add(w.reservation)).Error; err != nil {
+				Update("leased_until", w.clock.Now().Add(w.reservation)).Error; err != nil {
 				w.logger.WarnContext(ctx, "database queue heartbeat failed", "job_id", job.ID, "error", err)
 			}
 		}
@@ -331,7 +308,7 @@ func (w *DatabaseWorker) heartbeat(ctx context.Context, job *databaseJob, done <
 }
 
 func (w *DatabaseWorker) complete(job *databaseJob) error {
-	now := time.Now()
+	now := w.clock.Now()
 	return w.db.Transaction(func(tx *gorm.DB) error {
 		result := tx.Model(&databaseJob{}).Where("id = ? AND status = ? AND lease_token = ?", job.ID, jobStatusActive, *job.LeaseToken)
 		if job.RetentionSecs <= 0 {
@@ -362,23 +339,30 @@ func (w *DatabaseWorker) complete(job *databaseJob) error {
 }
 
 func (w *DatabaseWorker) cleanup(ctx context.Context, now time.Time) {
-	_ = w.db.WithContext(ctx).Where("expires_at <= ?", now).Delete(&databaseLock{}).Error
+	if err := w.db.WithContext(ctx).Where("expires_at <= ?", now).Delete(&databaseLock{}).Error; err != nil {
+		w.logger.WarnContext(ctx, "database queue lock cleanup failed", "error", err)
+	}
 	var ids []string
 	if err := w.db.WithContext(ctx).Model(&databaseJob{}).
 		Where("status = ? AND expires_at <= ?", jobStatusCompleted, now).
 		Limit(100).Pluck("id", &ids).Error; err != nil || len(ids) == 0 {
+		if err != nil {
+			w.logger.WarnContext(ctx, "database queue cleanup scan failed", "error", err)
+		}
 		return
 	}
-	_ = w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
+	if err := w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		if err := tx.Where("job_id IN ? AND expires_at IS NULL", ids).Delete(&databaseLock{}).Error; err != nil {
 			return err
 		}
 		return tx.Where("id IN ?", ids).Delete(&databaseJob{}).Error
-	})
+	}); err != nil {
+		w.logger.WarnContext(ctx, "database queue completed-job cleanup failed", "error", err)
+	}
 }
 
 func (w *DatabaseWorker) fail(job *databaseJob, handlerErr error) error {
-	now := time.Now()
+	now := w.clock.Now()
 	status := jobStatusRetry
 	availableAt := now.Add(retryDelay(job.Attempts))
 	if job.Attempts > job.MaxRetry {
@@ -399,7 +383,13 @@ func (w *DatabaseWorker) fail(job *databaseJob, handlerErr error) error {
 }
 
 func NewDatabaseInspector(db *gorm.DB, configuredQueues map[string]int) *DatabaseInspector {
-	return &DatabaseInspector{db: db, queues: configuredQueues}
+	return &DatabaseInspector{db: db, queues: configuredQueues, clock: appclock.Real{}}
+}
+
+func (i *DatabaseInspector) SetClock(value appclock.Clock) {
+	if value != nil {
+		i.clock = value
+	}
 }
 
 func (i *DatabaseInspector) Close() error { return nil }
@@ -431,7 +421,7 @@ func (i *DatabaseInspector) Queues(ctx context.Context) ([]string, error) {
 }
 
 func (i *DatabaseInspector) Stats(ctx context.Context, queueName string) (queue.QueueStats, error) {
-	now := time.Now()
+	now := i.clock.Now()
 	var counts struct {
 		Pending   int64
 		Active    int64
@@ -451,7 +441,9 @@ func (i *DatabaseInspector) Stats(ctx context.Context, queueName string) (queue.
 		return queue.QueueStats{}, err
 	}
 	var stat databaseStat
-	_ = i.db.WithContext(ctx).Where("queue = ?", queueName).First(&stat).Error
+	if err := i.db.WithContext(ctx).Where("queue = ?", queueName).First(&stat).Error; err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return queue.QueueStats{}, err
+	}
 	return queue.QueueStats{
 		Pending: counts.Pending, Active: counts.Active, Scheduled: counts.Scheduled,
 		Retry: counts.Retry, Failed: counts.Failed, Processed: stat.ProcessedTotal,
@@ -488,7 +480,7 @@ func (i *DatabaseInspector) Retry(ctx context.Context, queueName, id string) (in
 		query = query.Where("id = ?", id)
 	}
 	result := query.Updates(map[string]any{
-		"status": jobStatusRetry, "attempts": 0, "available_at": time.Now(),
+		"status": jobStatusRetry, "attempts": 0, "available_at": i.clock.Now(),
 		"last_error": nil, "last_failed_at": nil,
 	})
 	return int(result.RowsAffected), result.Error
@@ -526,13 +518,13 @@ func chooseJobID(taskID string) string {
 	return uuid.NewString()
 }
 
-func dispatchLocks(jobID, queueName, jobType string, payload []byte, options queue.DispatchOptions) []databaseLock {
+func dispatchLocks(jobID, queueName, jobType string, payload []byte, options queue.DispatchOptions, now time.Time) []databaseLock {
 	locks := make([]databaseLock, 0, 2)
 	if options.TaskID != "" {
 		locks = append(locks, databaseLock{LockKey: hashLockKey("task", []byte(options.TaskID)), JobID: jobID})
 	}
 	if options.UniqueFor > 0 {
-		expiresAt := time.Now().Add(options.UniqueFor)
+		expiresAt := now.Add(options.UniqueFor)
 		locks = append(locks, databaseLock{
 			LockKey: hashLockKey("unique", append([]byte(queueName+"\x00"+jobType+"\x00"), payload...)),
 			JobID:   jobID, ExpiresAt: &expiresAt,

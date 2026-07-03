@@ -17,12 +17,14 @@ func NewVerificationNotifier(mailer *appmail.Mailer, logger *slog.Logger) *Verif
 	return &VerificationNotifier{mailer: mailer, logger: logger}
 }
 
-func (n *VerificationNotifier) NotifyVerification(ctx context.Context, account user.User, token string) {
+func (n *VerificationNotifier) NotifyVerification(ctx context.Context, account user.User, token string) error {
 	if _, err := n.mailer.Queue(ctx, appmail.EmailVerification{
 		Username: account.Username,
 		Email:    account.Email,
 		Token:    token,
 	}, appmail.QueueOptions{}); err != nil {
 		n.logger.WarnContext(ctx, "queue email verification failed", "user_id", account.ID, "error", err)
+		return err
 	}
+	return nil
 }

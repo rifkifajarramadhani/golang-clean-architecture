@@ -27,6 +27,22 @@ func TestUserSecurityTransactions(t *testing.T) {
 	repo := NewUserRepository(db)
 	ctx := context.Background()
 	suffix := uuid.NewString()
+	t.Run("registration rolls back when verification dispatch fails", func(t *testing.T) {
+		account := &user.User{
+			Username: "rollback_" + suffix[:8], Email: fmt.Sprintf("rollback-%s@example.com", suffix),
+			Password: "hashed", Role: user.RoleUser, TokenVersion: 1,
+		}
+		dispatchErr := errors.New("queue unavailable")
+		err := repo.RegisterUser(ctx, account, &auth.EmailVerificationToken{
+			TokenHash: "rollback-token-" + suffix, ExpiresAt: time.Now().Add(time.Hour),
+		}, func() error { return dispatchErr })
+		if !errors.Is(err, dispatchErr) {
+			t.Fatalf("registration error = %v", err)
+		}
+		if _, err := repo.GetUserByEmail(ctx, account.Email); !errors.Is(err, user.ErrNotFound) {
+			t.Fatalf("rolled-back user lookup error = %v", err)
+		}
+	})
 	adminEmail := fmt.Sprintf("admin-%s@example.com", suffix)
 	admin := &user.User{Username: "admin_" + suffix[:8], Email: adminEmail, Password: "hashed", Role: user.RoleUser, TokenVersion: 1}
 	member := &user.User{Username: "member_" + suffix[:8], Email: fmt.Sprintf("member-%s@example.com", suffix), Password: "hashed", Role: user.RoleUser, TokenVersion: 1}
@@ -50,7 +66,12 @@ func TestUserSecurityTransactions(t *testing.T) {
 		}); err != nil {
 			t.Fatal(err)
 		}
-		result, err := repo.VerifyEmail(ctx, test.hash, test.bootstrap, time.Now())
+		result, err := repo.VerifyEmail(ctx, test.hash, time.Now(), func(account user.User, admins int64) (user.Role, error) {
+			if account.Email == test.bootstrap && admins == 0 {
+				return user.RoleAdmin, nil
+			}
+			return account.Role, nil
+		})
 		if err != nil {
 			t.Fatal(err)
 		}
@@ -65,7 +86,7 @@ func TestUserSecurityTransactions(t *testing.T) {
 	if verifiedAdmin.Role != user.RoleAdmin || !verifiedAdmin.EmailVerified() {
 		t.Fatalf("admin = %+v", verifiedAdmin)
 	}
-	if _, err := repo.VerifyEmail(ctx, "admin-token-hash-"+suffix, adminEmail, time.Now()); !errors.Is(err, auth.ErrInvalidToken) {
+	if _, err := repo.VerifyEmail(ctx, "admin-token-hash-"+suffix, time.Now(), nil); !errors.Is(err, auth.ErrInvalidToken) {
 		t.Fatalf("replayed verification error = %v", err)
 	}
 	pendingEmail := fmt.Sprintf("updated-%s@example.com", suffix)
@@ -78,7 +99,7 @@ func TestUserSecurityTransactions(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
-	pendingResult, err := repo.VerifyEmail(ctx, pendingHash, adminEmail, time.Now())
+	pendingResult, err := repo.VerifyEmail(ctx, pendingHash, time.Now(), nil)
 	if err != nil {
 		t.Fatal(err)
 	}

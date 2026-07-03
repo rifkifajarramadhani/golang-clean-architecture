@@ -23,7 +23,7 @@ func (u *usersFake) List(context.Context, int, int) ([]*user.User, int64, error)
 	return []*user.User{{ID: 2, Role: user.RoleUser, EmailVerifiedAt: &u.verified}}, 1, nil
 }
 func (u *usersFake) GetByID(_ context.Context, id int) (*user.User, error) {
-	role := user.RoleUser
+	role := user.Role(user.RoleUser)
 	if id == 1 {
 		role = user.RoleAdmin
 	}

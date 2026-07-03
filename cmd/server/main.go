@@ -3,7 +3,9 @@ package main
 import (
 	"context"
 	"errors"
+	"fmt"
 	"log"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -18,28 +20,35 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Printf("server failed: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		return fmt.Errorf("load config: %w", err)
 	}
 	appLogger, err := logging.New(cfg.Logging)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		return fmt.Errorf("create logger: %w", err)
 	}
 	defer func() { _ = appLogger.Close() }()
 	db, err := mysqladapter.Open(ctx, cfg.Database.DSN, appLogger.Logger)
 	if err != nil {
 		appLogger.ErrorContext(ctx, "connect to database failed", "error", err)
-		return
+		return fmt.Errorf("connect to database: %w", err)
 	}
 	defer func() { _ = mysqladapter.Close(db) }()
 
 	dispatcher, err := bootstrap.Dispatcher(cfg, db)
 	if err != nil {
 		appLogger.ErrorContext(ctx, "build queue dispatcher failed", "error", err)
-		return
+		return fmt.Errorf("build queue dispatcher: %w", err)
 	}
 	if closer, ok := dispatcher.(interface{ Close() error }); ok {
 		defer func() { _ = closer.Close() }()
@@ -59,14 +68,34 @@ func main() {
 	})
 	app.Use(helmet.New())
 	router.Setup(app, services.Users, services.Auth, services.Tokens, appLogger.Logger)
+	app.Get("/health/live", func(c fiber.Ctx) error {
+		return c.JSON(fiber.Map{"status": "ok"})
+	})
+	app.Get("/health/ready", func(c fiber.Ctx) error {
+		sqlDB, dbErr := db.DB()
+		if dbErr != nil || sqlDB.PingContext(c.Context()) != nil {
+			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"status": "unavailable"})
+		}
+		return c.JSON(fiber.Map{"status": "ok"})
+	})
 	go func() {
 		<-ctx.Done()
-		if err := app.Shutdown(); err != nil {
-			appLogger.Error("graceful server shutdown failed", "error", err)
+		done := make(chan error, 1)
+		go func() { done <- app.Shutdown() }()
+		select {
+		case shutdownErr := <-done:
+			if shutdownErr != nil {
+				appLogger.Error("graceful server shutdown failed", "error", shutdownErr)
+			}
+		case <-time.After(15 * time.Second):
+			appLogger.Error("graceful server shutdown timed out")
 		}
 	}()
 	appLogger.Info("server running", "port", cfg.App.Port)
 	if err := app.Listen(":" + cfg.App.Port); err != nil {
-		appLogger.Error("server stopped", "error", err)
+		if ctx.Err() == nil {
+			return fmt.Errorf("listen: %w", err)
+		}
 	}
+	return nil
 }

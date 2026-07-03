@@ -24,7 +24,9 @@ func TestWelcomeNotifierIsBestEffort(t *testing.T) {
 		failingMailDispatcher{},
 	)
 	notifier := NewWelcomeNotifier(mailer, slog.New(slog.NewTextHandler(io.Discard, nil)))
-	notifier.NotifyWelcome(context.Background(), user.User{
+	if err := notifier.NotifyWelcome(context.Background(), user.User{
 		ID: 42, Username: "rifki", Email: "rifki@example.com",
-	})
+	}); err == nil {
+		t.Fatal("expected queue error")
+	}
 }

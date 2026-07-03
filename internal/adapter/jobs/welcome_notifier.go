@@ -17,11 +17,13 @@ func NewWelcomeNotifier(mailer *appmail.Mailer, logger *slog.Logger) *WelcomeNot
 	return &WelcomeNotifier{mailer: mailer, logger: logger}
 }
 
-func (n *WelcomeNotifier) NotifyWelcome(ctx context.Context, account user.User) {
+func (n *WelcomeNotifier) NotifyWelcome(ctx context.Context, account user.User) error {
 	if _, err := n.mailer.Queue(ctx, appmail.Welcome{
 		Username: account.Username,
 		Email:    account.Email,
 	}, appmail.QueueOptions{}); err != nil {
 		n.logger.WarnContext(ctx, "queue welcome email failed", "user_id", account.ID, "error", err)
+		return err
 	}
+	return nil
 }

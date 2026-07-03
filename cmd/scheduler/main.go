@@ -2,7 +2,9 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
+	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -16,15 +18,22 @@ import (
 )
 
 func main() {
+	if err := run(); err != nil {
+		log.Printf("scheduler failed: %v", err)
+		os.Exit(1)
+	}
+}
+
+func run() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("load config: %v", err)
+		return fmt.Errorf("load config: %w", err)
 	}
 	logger, err := logging.New(cfg.Logging)
 	if err != nil {
-		log.Fatalf("create logger: %v", err)
+		return fmt.Errorf("create logger: %w", err)
 	}
 	defer func() { _ = logger.Close() }()
 	var db = (*gorm.DB)(nil)
@@ -32,19 +41,19 @@ func main() {
 		db, err = mysqladapter.Open(ctx, cfg.Database.DSN, logger.Logger)
 		if err != nil {
 			logger.ErrorContext(ctx, "connect to database failed", "error", err)
-			return
+			return fmt.Errorf("connect to database: %w", err)
 		}
 		defer func() { _ = mysqladapter.Close(db) }()
 	}
 	registry, err := bootstrap.ScheduleRegistry(cfg)
 	if err != nil {
 		logger.ErrorContext(ctx, "build schedule registry failed", "error", err)
-		return
+		return fmt.Errorf("build schedule registry: %w", err)
 	}
 	dispatcher, err := bootstrap.Dispatcher(cfg, db)
 	if err != nil {
 		logger.ErrorContext(ctx, "build queue dispatcher failed", "error", err)
-		return
+		return fmt.Errorf("build queue dispatcher: %w", err)
 	}
 	if closer, ok := dispatcher.(interface{ Close() error }); ok {
 		defer func() { _ = closer.Close() }()
@@ -58,7 +67,7 @@ func main() {
 		case <-ctx.Done():
 			timer.Stop()
 			logger.Info("scheduler stopped")
-			return
+			return nil
 		case tick := <-timer.C:
 			if err := runner.Run(ctx, tick); err != nil {
 				logger.ErrorContext(ctx, "scheduler tick failed", "error", err)
