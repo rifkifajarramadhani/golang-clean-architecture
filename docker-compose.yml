@@ -12,6 +12,8 @@ services:
       - "8080:8080"
     volumes:
       - .:/app
+    env_file:
+      - ${ENV_FILE:-.env}
     environment:
       DATABASE_HOST: db
       REDIS_ADDRESS: redis:6379
@@ -29,6 +31,8 @@ services:
     command: air -c .air.worker.toml
     volumes:
       - .:/app
+    env_file:
+      - ${ENV_FILE:-.env}
     environment:
       DATABASE_HOST: db
       QUEUE_DRIVER: ${QUEUE_DRIVER:-redis}
@@ -49,6 +53,8 @@ services:
     command: go run ./cmd/scheduler
     volumes:
       - .:/app
+    env_file:
+      - ${ENV_FILE:-.env}
     environment:
       DATABASE_HOST: db
       QUEUE_DRIVER: ${QUEUE_DRIVER:-redis}
@@ -65,13 +71,13 @@ services:
     ports:
       - "3306:3306"
     environment:
-      MYSQL_ROOT_PASSWORD: greygoose
+      MYSQL_ROOT_PASSWORD: ${DATABASE_PASSWORD:?DATABASE_PASSWORD must be set in .env}
       MYSQL_ROOT_HOST: "%"
       MYSQL_DATABASE: db_name
     volumes:
       - db_data:/var/lib/mysql
     healthcheck:
-      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-pgreygoose"]
+      test: ["CMD-SHELL", "mysqladmin ping -h localhost -u root -p$$MYSQL_ROOT_PASSWORD"]
       interval: 5s
       timeout: 5s
       retries: 20

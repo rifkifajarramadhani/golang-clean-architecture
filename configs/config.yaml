@@ -6,12 +6,12 @@ database:
   host: db
   port: 3306
   user: root
-  password: greygoose
+  password: ""
   name: db_name
 
 auth:
-  jwt_access_secret: super-secret-access-key-change-me
-  jwt_refresh_secret: super-secret-refresh-key-change-me
+  jwt_access_secret: ""
+  jwt_refresh_secret: ""
   access_ttl_minutes: 15
   refresh_ttl_hours: 168
   issuer: golang-clean-architecture

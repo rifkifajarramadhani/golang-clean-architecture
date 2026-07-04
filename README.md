@@ -50,9 +50,16 @@ Backend services boilerplate using Clean Architecture principles with independen
 
 ## Configuration
 
-Current configuration file:
+Non-sensitive defaults live in `configs/config.yaml`. Credentials are supplied
+through environment variables. For local development, create an ignored `.env`
+file from the safe template:
 
-- `configs/config.yaml`
+```bash
+cp .env.example .env
+```
+
+The application loads `.env` when present without overriding variables already
+set by the shell or container platform.
 
 Default values in this project:
 
@@ -60,10 +67,10 @@ Default values in this project:
 - DB host: `db`
 - DB port: `3306`
 - DB user: `root`
-- DB password: `greygoose`
+- DB password: configured with `DATABASE_PASSWORD`
 - DB name: `db_name`
-- JWT access secret: `super-secret-access-key-change-me` (development only)
-- JWT refresh secret: `super-secret-refresh-key-change-me` (development only)
+- JWT access secret: configured with `AUTH_JWT_ACCESS_SECRET`
+- JWT refresh secret: configured with `AUTH_JWT_REFRESH_SECRET`
 - Access token TTL: `15` minutes
 - Refresh token TTL: `168` hours
 - Email verification TTL: `24` hours
@@ -82,6 +89,7 @@ Redis is the default queue backend. The database queue remains available with
 ### 1) Start services
 
 ```bash
+cp .env.example .env
 docker compose up -d --build
 ```
 
@@ -112,7 +120,7 @@ make migrate args=up
 Alternative without `make`:
 
 ```bash
-docker compose exec server migrate -database 'mysql://root:greygoose@tcp(db:3306)/db_name' -path internal/adapter/mysql/migrations up
+docker compose exec server sh -c 'migrate -database "mysql://root:${DATABASE_PASSWORD}@tcp(db:3306)/db_name" -path internal/adapter/mysql/migrations up'
 ```
 
 ### 3) Check logs
@@ -271,6 +279,23 @@ Supported encryption values are `none`, `starttls`, and `tls`.
 When running the application outside Docker Compose, use `MAIL_HOST=localhost`
 to connect to the local Mailpit container.
 
+## Production Secrets
+
+Set `APP_ENVIRONMENT=production` and configure the container platform to inject
+`DATABASE_PASSWORD`, `AUTH_JWT_ACCESS_SECRET`, `AUTH_JWT_REFRESH_SECRET`,
+`REDIS_PASSWORD`, and `MAIL_PASSWORD` from its managed secret store. Grant the
+workload access through workload identity; do not place cloud credentials or a
+secret-manager SDK in the application.
+
+Generate independent JWT secrets with a cryptographically secure generator,
+for example `openssl rand -base64 48`. Production startup rejects missing,
+placeholder, identical, or short JWT secrets and a missing database password.
+
+Rotate secrets in the managed secret store and restart or roll out the affected
+workloads. Secrets must never be committed to Git, copied into images, written
+to YAML, or included in logs and error messages. Values previously committed to
+Git history must be rotated if they were used outside local development.
+
 ## API Endpoints
 
 Base URL: `http://localhost:8080/api`
@@ -317,7 +342,7 @@ curl http://localhost:8080/api/auth/me \
 - API runs via Air using `.air.toml`.
 - Worker runs via Air using `.air.worker.toml`.
 - Build target for Air is `./cmd/server` and binary output is `tmp/main`.
-- Configuration supports environment-variable overrides such as `DATABASE_HOST`, `QUEUE_DRIVER`, `QUEUE_DATABASE_POLL_INTERVAL_MILLISECONDS`, `QUEUE_DATABASE_RESERVATION_SECONDS`, `REDIS_ADDRESS`, and `MAIL_HOST`.
+- Configuration supports environment-variable overrides such as `DATABASE_HOST`, `DATABASE_PASSWORD`, `AUTH_JWT_ACCESS_SECRET`, `AUTH_JWT_REFRESH_SECRET`, `QUEUE_DRIVER`, `REDIS_ADDRESS`, and `MAIL_PASSWORD`.
 - Password hashing and current-password checks are handled in the core service.
 - Refresh tokens are persisted as SHA-256 hashes in `refresh_tokens` table.
 - User-management routes require the `admin` role; self-service routes only operate on the authenticated account.
@@ -333,14 +358,9 @@ If you see:
 
 `Host '172.x.x.x' is not allowed to connect to this MySQL server`
 
-Run:
-
-```bash
-docker compose exec db mysql -uroot -pgreygoose -e "CREATE USER IF NOT EXISTS 'root'@'%' IDENTIFIED BY 'greygoose'; GRANT ALL PRIVILEGES ON *.* TO 'root'@'%' WITH GRANT OPTION; FLUSH PRIVILEGES;"
-docker compose restart server
-```
-
-If you can reset local DB data completely:
+Confirm that `DATABASE_PASSWORD` is set in `.env`. If you can reset local DB
+data completely, recreate the database volume so MySQL initializes with the
+current local credential:
 
 ```bash
 docker compose down -v

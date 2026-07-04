@@ -5,11 +5,13 @@ import (
 	"fmt"
 	stdmail "net/mail"
 	"net/url"
+	"os"
 	"strconv"
 	"strings"
 	"time"
 
 	mysqldriver "github.com/go-sql-driver/mysql"
+	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
@@ -97,6 +99,10 @@ type Config struct {
 }
 
 func Load() (*Config, error) {
+	if err := loadDotEnv(".env"); err != nil {
+		return nil, err
+	}
+
 	instance := viper.New()
 	instance.SetConfigName("config")
 	instance.SetConfigType("yaml")
@@ -148,6 +154,13 @@ func Load() (*Config, error) {
 	return &config, nil
 }
 
+func loadDotEnv(filename string) error {
+	if err := godotenv.Load(filename); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("load dotenv file: %w", err)
+	}
+	return nil
+}
+
 var configKeys = []string{
 	"app.port", "app.environment",
 	"database.host", "database.port", "database.user", "database.password", "database.name",
@@ -168,6 +181,9 @@ func validateConfig(config *Config) error {
 	if strings.TrimSpace(config.Database.Host) == "" || config.Database.Port < 1 || config.Database.Port > 65535 ||
 		strings.TrimSpace(config.Database.User) == "" || strings.TrimSpace(config.Database.Name) == "" {
 		return fmt.Errorf("database host, port, user, and name must be valid")
+	}
+	if isProduction(config.App.Environment) && strings.TrimSpace(config.Database.Password) == "" {
+		return fmt.Errorf("DATABASE_PASSWORD is required in production")
 	}
 	if _, err := url.Parse("redis://" + config.Redis.Address); err != nil || strings.TrimSpace(config.Redis.Address) == "" {
 		return fmt.Errorf("redis address must be valid")
@@ -215,14 +231,29 @@ func normalizeAuthConfig(app *AppConfig, auth *AuthConfig) error {
 			return fmt.Errorf("invalid bootstrap admin email %q", auth.BootstrapAdminEmail)
 		}
 	}
-	if app.Environment != "development" && app.Environment != "test" {
+	if isProduction(app.Environment) {
+		if strings.TrimSpace(auth.JWTAccessSecret) == "" {
+			return fmt.Errorf("AUTH_JWT_ACCESS_SECRET is required in production")
+		}
+		if strings.TrimSpace(auth.JWTRefreshSecret) == "" {
+			return fmt.Errorf("AUTH_JWT_REFRESH_SECRET is required in production")
+		}
 		if len(auth.JWTAccessSecret) < 32 || len(auth.JWTRefreshSecret) < 32 ||
 			auth.JWTAccessSecret == auth.JWTRefreshSecret ||
-			strings.Contains(auth.JWTAccessSecret, "change-me") || strings.Contains(auth.JWTRefreshSecret, "change-me") {
+			isPlaceholderSecret(auth.JWTAccessSecret) || isPlaceholderSecret(auth.JWTRefreshSecret) {
 			return fmt.Errorf("production JWT secrets must be distinct, non-placeholder values of at least 32 bytes")
 		}
 	}
 	return nil
+}
+
+func isProduction(environment string) bool {
+	return environment != "development" && environment != "test"
+}
+
+func isPlaceholderSecret(secret string) bool {
+	normalized := strings.ToLower(secret)
+	return strings.Contains(normalized, "change-me") || strings.Contains(normalized, "placeholder")
 }
 
 func normalizeLoggingConfig(logging *LoggingConfig) {

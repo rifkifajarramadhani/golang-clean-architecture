@@ -1,4 +1,9 @@
-export MYSQL_URL ?= mysql://root:greygoose@tcp(db:3306)/db_name
+-include .env
+export
+
+DATABASE_USER ?= root
+DATABASE_NAME ?= db_name
+export MYSQL_URL ?= mysql://$(DATABASE_USER):$(DATABASE_PASSWORD)@tcp(db:3306)/$(DATABASE_NAME)
 
 MIGRATIONS := internal/adapter/mysql/migrations
 
