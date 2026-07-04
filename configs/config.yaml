@@ -25,7 +25,7 @@ redis:
   db: 0
 
 queue:
-  driver: redis
+  driver: database
   concurrency: 10
   shutdown_seconds: 30
   queues:

@@ -35,7 +35,7 @@ services:
       - ${ENV_FILE:-.env}
     environment:
       DATABASE_HOST: db
-      QUEUE_DRIVER: ${QUEUE_DRIVER:-redis}
+      QUEUE_DRIVER: ${QUEUE_DRIVER:-database}
       REDIS_ADDRESS: redis:6379
     depends_on:
       db:
@@ -57,7 +57,7 @@ services:
       - ${ENV_FILE:-.env}
     environment:
       DATABASE_HOST: db
-      QUEUE_DRIVER: ${QUEUE_DRIVER:-redis}
+      QUEUE_DRIVER: ${QUEUE_DRIVER:-database}
       REDIS_ADDRESS: redis:6379
     depends_on:
       db:
