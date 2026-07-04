@@ -3,8 +3,8 @@ package config
 import (
 	"errors"
 	"fmt"
+	"net"
 	stdmail "net/mail"
-	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -185,8 +185,8 @@ func validateConfig(config *Config) error {
 	if isProduction(config.App.Environment) && strings.TrimSpace(config.Database.Password) == "" {
 		return fmt.Errorf("DATABASE_PASSWORD is required in production")
 	}
-	if _, err := url.Parse("redis://" + config.Redis.Address); err != nil || strings.TrimSpace(config.Redis.Address) == "" {
-		return fmt.Errorf("redis address must be valid")
+	if _, _, err := net.SplitHostPort(config.Redis.Address); err != nil {
+		return fmt.Errorf("redis address must be host:port")
 	}
 	if len(config.Queue.Queues) == 0 {
 		return fmt.Errorf("at least one queue must be configured")
@@ -253,7 +253,7 @@ func isProduction(environment string) bool {
 
 func isPlaceholderSecret(secret string) bool {
 	normalized := strings.ToLower(secret)
-	return strings.Contains(normalized, "change-me") || strings.Contains(normalized, "placeholder")
+	return strings.Contains(normalized, "change") || strings.Contains(normalized, "placeholder")
 }
 
 func normalizeLoggingConfig(logging *LoggingConfig) {

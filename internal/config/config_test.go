@@ -188,6 +188,7 @@ func TestNormalizeAuthConfigRejectsUnsafeProductionSecrets(t *testing.T) {
 		{JWTAccessSecret: "short", JWTRefreshSecret: "also-short"},
 		{JWTAccessSecret: "same-secret-that-is-at-least-32-bytes", JWTRefreshSecret: "same-secret-that-is-at-least-32-bytes"},
 		{JWTAccessSecret: "super-secret-access-key-change-me", JWTRefreshSecret: "different-secret-that-is-at-least-32"},
+		{JWTAccessSecret: "local-access-secret-change-me", JWTRefreshSecret: "local-refresh-secret-change-me-too"},
 	}
 	staging := AppConfig{Environment: "staging"}
 	if err := normalizeAuthConfig(&staging, &AuthConfig{}); err == nil {
