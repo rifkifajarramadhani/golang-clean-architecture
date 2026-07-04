@@ -186,15 +186,22 @@ func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 	return nil
 }
 
+// dummyPasswordHash is a valid bcrypt hash of an unused random value. Login
+// compares against it when no account matches so unknown and known emails take
+// the same time, preventing account enumeration via response timing.
+const dummyPasswordHash = "$2a$10$HT/u9JiywviXnwqC.hYgu.deWvDR0nBUC/HkEA.09dogRsMOiDmp6"
+
 func (s *Service) Login(ctx context.Context, email, password string) (*Tokens, error) {
 	account, err := s.users.GetUserByEmail(ctx, user.NormalizeEmail(email))
 	if errors.Is(err, user.ErrNotFound) {
+		_ = s.password.Compare(dummyPasswordHash, password)
 		return nil, ErrInvalidCredentials
 	}
 	if err != nil {
 		return nil, fmt.Errorf("find user for login: %w", err)
 	}
 	if account == nil {
+		_ = s.password.Compare(dummyPasswordHash, password)
 		return nil, ErrInvalidCredentials
 	}
 	if s.password.Compare(account.Password, password) != nil {
@@ -240,6 +247,19 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Tokens, er
 		AccessToken: accessToken, AccessExpiresAt: accessExp,
 		RefreshToken: newRefreshToken, RefreshExpiresAt: refreshExp,
 	}, nil
+}
+
+// Logout revokes the refresh token so it can no longer be used or rotated.
+// Unknown or already-revoked tokens are treated as success so logout stays
+// idempotent and reveals nothing about token validity.
+func (s *Service) Logout(ctx context.Context, refreshToken string) error {
+	if refreshToken == "" {
+		return nil
+	}
+	if err := s.refresh.RevokeRefreshTokenByHash(ctx, hashToken(refreshToken)); err != nil && !errors.Is(err, user.ErrNotFound) {
+		return fmt.Errorf("revoke refresh token: %w", err)
+	}
+	return nil
 }
 
 func (s *Service) Me(ctx context.Context, userID int) (*user.User, error) {

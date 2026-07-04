@@ -38,8 +38,9 @@ func (r *userStoreFake) GetUserByEmailOrPending(context.Context, string) (*user.
 }
 
 type refreshTokenRepoFake struct {
-	stored  *RefreshToken
-	revoked bool
+	stored    *RefreshToken
+	revoked   bool
+	revokeErr error
 }
 
 func (r *refreshTokenRepoFake) CreateRefreshToken(_ context.Context, token *RefreshToken) error {
@@ -53,6 +54,9 @@ func (r *refreshTokenRepoFake) GetActiveRefreshTokenByHash(context.Context, stri
 	return r.stored, nil
 }
 func (r *refreshTokenRepoFake) RevokeRefreshTokenByHash(context.Context, string) error {
+	if r.revokeErr != nil {
+		return r.revokeErr
+	}
 	r.revoked = true
 	return nil
 }
@@ -202,6 +206,58 @@ func TestLoginRequiresVerifiedEmail(t *testing.T) {
 	service := newTestService(users, &refreshTokenRepoFake{}, &verificationRepoFake{}, tokenServiceFake{}, nil)
 	if _, err := service.Login(context.Background(), "user@example.com", "password"); !errors.Is(err, ErrEmailUnverified) {
 		t.Fatalf("error = %v", err)
+	}
+}
+
+func TestLoginComparesPasswordForUnknownUser(t *testing.T) {
+	spy := &passwordSpy{}
+	service := NewService(
+		&userStoreFake{}, &refreshTokenRepoFake{}, &verificationRepoFake{}, tokenServiceFake{}, spy,
+		nil, nil, time.Hour, "",
+	)
+	if _, err := service.Login(context.Background(), "unknown@example.com", "password"); !errors.Is(err, ErrInvalidCredentials) {
+		t.Fatalf("error = %v", err)
+	}
+	if spy.compares != 1 {
+		t.Fatalf("password compares = %d, want 1 (timing-equalizing dummy compare)", spy.compares)
+	}
+}
+
+type passwordSpy struct {
+	compares int
+}
+
+func (*passwordSpy) Hash(string) (string, error) { return "hashed", nil }
+func (s *passwordSpy) Compare(string, string) error {
+	s.compares++
+	return errors.New("mismatch")
+}
+
+func TestLogoutRevokesTokenAndIsIdempotent(t *testing.T) {
+	tests := []struct {
+		name        string
+		token       string
+		revokeErr   error
+		wantErr     bool
+		wantRevoked bool
+	}{
+		{"revokes active token", "refresh-token", nil, false, true},
+		{"unknown token is success", "refresh-token", user.ErrNotFound, false, false},
+		{"empty token is success", "", nil, false, false},
+		{"storage failure surfaces", "refresh-token", errors.New("db down"), true, false},
+	}
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			refresh := &refreshTokenRepoFake{revokeErr: test.revokeErr}
+			service := newTestService(&userStoreFake{}, refresh, &verificationRepoFake{}, tokenServiceFake{}, nil)
+			err := service.Logout(context.Background(), test.token)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("error = %v, wantErr %v", err, test.wantErr)
+			}
+			if refresh.revoked != test.wantRevoked {
+				t.Fatalf("revoked = %v, want %v", refresh.revoked, test.wantRevoked)
+			}
+		})
 	}
 }
 

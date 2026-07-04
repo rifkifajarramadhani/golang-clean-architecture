@@ -37,6 +37,7 @@ func Setup(app *fiber.App, users handler.UserService, auth handler.AuthService, 
 	authGroup.Post("/register", authHandler.Register)
 	authGroup.Post("/login", authHandler.Login)
 	authGroup.Post("/refresh", authHandler.Refresh)
+	authGroup.Post("/logout", authHandler.Logout)
 	authGroup.Post("/verify-email", authHandler.VerifyEmail)
 	authGroup.Post("/resend-verification", authHandler.ResendVerification)
 

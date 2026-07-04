@@ -63,6 +63,7 @@ Domain-first Clean Architecture; dependencies point from `cmd/` and adapters inw
 
 - `cmd/<app>` (server, worker, scheduler, queue, schedule) — owns process lifecycle, creates config/logging/DB/queue resources, and wires dependencies. Kept thin.
 - `internal/auth`, `internal/user` — core entities, use-case rules, and the ports (interfaces) adapters must implement. Define interfaces at the consumption site.
+- `internal/clock` — wall-clock boundary (`Clock` interface, `Real`, `Func`) so core packages take time as a dependency instead of calling `time.Now()`.
 - `internal/mail`, `internal/queue`, `internal/scheduler` — framework-neutral capabilities (mailables, job/dispatcher abstractions, cron registry) usable independently of any transport.
 - `internal/adapter/http` — Fiber handlers, DTOs, middleware, router. Translates HTTP <-> core service calls.
 - `internal/adapter/mysql`, `jwt`, `password`, `smtp`, `queue`, `cron`, `logging` — concrete implementations of core ports (GORM repositories, JWT signing, bcrypt, SMTP transport, Asynq/DB queue backends, cron parsing, slog setup).

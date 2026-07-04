@@ -30,6 +30,7 @@ func (authServiceFake) Refresh(context.Context, string) (*appauth.Tokens, error)
 	return nil, nil
 }
 
+func (authServiceFake) Logout(context.Context, string) error               { return nil }
 func (authServiceFake) VerifyEmail(context.Context, string) error          { return nil }
 func (authServiceFake) ResendVerification(context.Context, string) error   { return nil }
 func (authServiceFake) SendVerificationForUser(context.Context, int) error { return nil }

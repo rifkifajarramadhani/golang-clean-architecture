@@ -304,6 +304,7 @@ Base URL: `http://localhost:8080/api`
 - `POST /auth/register`
 - `POST /auth/login`
 - `POST /auth/refresh`
+- `POST /auth/logout`
 - `POST /auth/verify-email`
 - `POST /auth/resend-verification`
 - Protected routes (require `Authorization: Bearer <access_token>`):

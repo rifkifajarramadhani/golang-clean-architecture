@@ -28,6 +28,7 @@ const (
 	jobStatusFailed    = "failed"
 	jobStatusCompleted = "completed"
 	defaultMaxRetry    = 25
+	cleanupInterval    = 30 * time.Second
 )
 
 type DatabaseDispatcher struct {
@@ -45,6 +46,9 @@ type DatabaseWorker struct {
 	shutdownTimeout time.Duration
 	logger          *slog.Logger
 	clock           appclock.Clock
+
+	cleanupMu   sync.Mutex
+	nextCleanup time.Time
 }
 
 type DatabaseInspector struct {
@@ -180,6 +184,7 @@ func (w *DatabaseWorker) Run(ctx context.Context) error {
 
 func (w *DatabaseWorker) runLoop(ctx context.Context, offset int) {
 	index := offset % len(w.weightedQueues)
+	emptyReserves := 0
 	for {
 		select {
 		case <-ctx.Done():
@@ -193,6 +198,15 @@ func (w *DatabaseWorker) runLoop(ctx context.Context, offset int) {
 			if err != nil && !errors.Is(err, context.Canceled) {
 				w.logger.ErrorContext(ctx, "database queue reservation failed", "error", err)
 			}
+			emptyReserves++
+			// Only sleep once every weighted queue slot came up empty in a
+			// row; sleeping after any single empty reserve would delay ready
+			// jobs on the other queues by up to a full poll cycle. Errors
+			// always sleep to avoid hot-looping against a broken database.
+			if err == nil && emptyReserves < len(w.weightedQueues) {
+				continue
+			}
+			emptyReserves = 0
 			timer := time.NewTimer(w.pollInterval)
 			select {
 			case <-ctx.Done():
@@ -202,6 +216,7 @@ func (w *DatabaseWorker) runLoop(ctx context.Context, offset int) {
 			}
 			continue
 		}
+		emptyReserves = 0
 		w.process(ctx, job)
 	}
 }
@@ -209,7 +224,7 @@ func (w *DatabaseWorker) runLoop(ctx context.Context, offset int) {
 func (w *DatabaseWorker) reserve(ctx context.Context, queueName string) (*databaseJob, error) {
 	var job databaseJob
 	now := w.clock.Now()
-	w.cleanup(ctx, now)
+	w.maybeCleanup(ctx, now)
 	err := w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
 			Where("queue = ? AND ((status IN ? AND available_at <= ?) OR (status = ? AND leased_until <= ?))",
@@ -336,6 +351,19 @@ func (w *DatabaseWorker) complete(job *databaseJob) error {
 			DoUpdates: clause.Assignments(map[string]any{"processed_total": gorm.Expr("processed_total + 1")}),
 		}).Create(&databaseStat{Queue: job.Queue, ProcessedTotal: 1}).Error
 	})
+}
+
+// maybeCleanup throttles cleanup to once per cleanupInterval across all worker
+// goroutines; running it on every reserve added three queries per poll.
+func (w *DatabaseWorker) maybeCleanup(ctx context.Context, now time.Time) {
+	w.cleanupMu.Lock()
+	if now.Before(w.nextCleanup) {
+		w.cleanupMu.Unlock()
+		return
+	}
+	w.nextCleanup = now.Add(cleanupInterval)
+	w.cleanupMu.Unlock()
+	w.cleanup(ctx, now)
 }
 
 func (w *DatabaseWorker) cleanup(ctx context.Context, now time.Time) {

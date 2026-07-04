@@ -15,6 +15,7 @@ type AuthService interface {
 	Register(context.Context, *user.User) error
 	Login(context.Context, string, string) (*appauth.Tokens, error)
 	Refresh(context.Context, string) (*appauth.Tokens, error)
+	Logout(context.Context, string) error
 	VerifyEmail(context.Context, string) error
 	ResendVerification(context.Context, string) error
 	SendVerificationForUser(context.Context, int) error
@@ -83,6 +84,18 @@ func (h *AuthHandler) Refresh(c fiber.Ctx) error {
 		return writeDomainError(c, err)
 	}
 	return c.JSON(toAuthResponse(tokens))
+}
+
+func (h *AuthHandler) Logout(c fiber.Ctx) error {
+	var req dto.RefreshRequest
+	if err := bindJSON(c, &req); err != nil {
+		return writeBindError(c, err)
+	}
+	if err := h.auth.Logout(c.Context(), req.RefreshToken); err != nil {
+		h.logger.ErrorContext(c.Context(), "logout failed", "error", err)
+		return writeDomainError(c, err)
+	}
+	return c.JSON(fiber.Map{"message": "logged out"})
 }
 
 func (h *AuthHandler) VerifyEmail(c fiber.Ctx) error {

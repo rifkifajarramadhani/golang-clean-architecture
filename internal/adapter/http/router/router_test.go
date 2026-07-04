@@ -43,6 +43,7 @@ type authFake struct{}
 func (authFake) Register(context.Context, *user.User) error                     { return nil }
 func (authFake) Login(context.Context, string, string) (*appauth.Tokens, error) { return nil, nil }
 func (authFake) Refresh(context.Context, string) (*appauth.Tokens, error)       { return nil, nil }
+func (authFake) Logout(context.Context, string) error                           { return nil }
 func (authFake) VerifyEmail(context.Context, string) error                      { return nil }
 func (authFake) ResendVerification(context.Context, string) error               { return nil }
 func (authFake) SendVerificationForUser(context.Context, int) error             { return nil }
@@ -68,6 +69,7 @@ func TestUserRouteAuthorizationMatrix(t *testing.T) {
 		body   string
 		want   int
 	}{
+		{"anonymous logout", "POST", "/api/auth/logout", "", `{"refresh_token":"token"}`, fiber.StatusOK},
 		{"anonymous admin list", "GET", "/api/users", "", "", fiber.StatusUnauthorized},
 		{"normal user admin list", "GET", "/api/users", "user", "", fiber.StatusForbidden},
 		{"admin list", "GET", "/api/users", "admin", "", fiber.StatusOK},
