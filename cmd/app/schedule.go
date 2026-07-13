@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"log"
 	"log/slog"
-	"os"
 	"time"
 
 	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
@@ -15,13 +14,7 @@ import (
 	"gorm.io/gorm"
 )
 
-func main() {
-	if err := newRootCommand().Execute(); err != nil {
-		os.Exit(1)
-	}
-}
-
-func newRootCommand() *cobra.Command {
+func scheduleCommand() *cobra.Command {
 	root := &cobra.Command{
 		Use:          "schedule",
 		Short:        "Inspect and run application schedules",

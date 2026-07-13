@@ -5,11 +5,7 @@ COPY go.mod go.sum ./
 RUN go mod download
 COPY . .
 RUN mkdir -p /out && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/server ./cmd/server && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/worker ./cmd/worker && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/scheduler ./cmd/scheduler && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/queue ./cmd/queue && \
-    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/schedule ./cmd/schedule
+    CGO_ENABLED=0 go build -trimpath -ldflags="-s -w" -o /out/app ./cmd/app
 
 FROM build AS development
 RUN go install github.com/air-verse/air@v1.65.3 && \
@@ -29,4 +25,4 @@ USER app
 EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=3s --start-period=10s --retries=3 \
     CMD wget -q -O /dev/null http://127.0.0.1:8080/health/live || exit 1
-CMD ["server"]
+CMD ["app", "serve"]

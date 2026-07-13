@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project
 
-Backend services boilerplate built with Clean Architecture principles: independently deployable HTTP API, queue worker, and scheduler processes, plus `queue`/`schedule` CLIs. Go 1.26, Fiber v3, GORM/MySQL, Redis or MySQL-backed queue (Asynq), Viper config, golang-migrate, Air hot reload.
+Backend services boilerplate built with Clean Architecture principles: a single `cmd/app` binary whose subcommands provide independently deployable HTTP API (`serve`), queue worker (`worker`), and scheduler (`scheduler`) roles — or all three in one process (`all`) — plus `queue`/`schedule` operator CLIs. Go 1.26, Fiber v3, GORM/MySQL, Redis or MySQL-backed queue (Asynq), Viper config, golang-migrate, Air hot reload.
 
 Detailed agent guidance already lives in these files — read them, don't duplicate them here:
 
@@ -18,10 +18,11 @@ Detailed agent guidance already lives in these files — read them, don't duplic
 ## Commands
 
 ```bash
-make build              # build all binaries (server, worker, scheduler, queue, schedule)
-make run-server          # go run ./cmd/server
-make run-worker          # go run ./cmd/worker
-make run-scheduler       # go run ./cmd/scheduler
+make build              # build the single cmd/app binary
+make run-server          # go run ./cmd/app serve
+make run-worker          # go run ./cmd/app worker
+make run-scheduler       # go run ./cmd/app scheduler
+make run-all             # go run ./cmd/app all  (server + worker + scheduler in one process)
 make fmt                 # goimports + gofmt -w
 make fmt-check           # verify formatting without writing
 make vet                 # go vet ./...
@@ -61,7 +62,7 @@ Local dev stack (server + worker + scheduler + MySQL + Redis + Mailpit): `docker
 
 Domain-first Clean Architecture; dependencies point from `cmd/` and adapters inward toward core packages, never the reverse. This is enforced by `depguard` in [.golangci.yml](.golangci.yml): `internal/auth`, `internal/user`, `internal/mail`, `internal/queue`, `internal/scheduler` (the "core" packages) must not import `internal/adapter`, `internal/bootstrap`, or `internal/config`. Logical-block blank-line spacing is enforced by `wsl_v5` in the same config.
 
-- `cmd/<app>` (server, worker, scheduler, queue, schedule) — owns process lifecycle, creates config/logging/DB/queue resources, and wires dependencies. Kept thin.
+- `cmd/app` — single multi-command binary; owns process lifecycle, creates config/logging/DB/queue resources, and wires dependencies. Kept thin. Subcommands: `serve`, `worker`, `scheduler`, `all` (all three in one process, sharing one config/DB pool/dispatcher), `queue`, `schedule`. The `run*` helpers (`runServer`/`runWorker`/`runScheduler`) are extracted so `all` can share resources across them.
 - `internal/auth`, `internal/user` — core entities, use-case rules, and the ports (interfaces) adapters must implement. Define interfaces at the consumption site.
 - `internal/clock` — wall-clock boundary (`Clock` interface, `Real`, `Func`) so core packages take time as a dependency instead of calling `time.Now()`.
 - `internal/mail`, `internal/queue`, `internal/scheduler` — framework-neutral capabilities (mailables, job/dispatcher abstractions, cron registry) usable independently of any transport.

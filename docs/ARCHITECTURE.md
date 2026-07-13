@@ -5,7 +5,7 @@ from commands and adapters toward core capabilities.
 
 ## Package Map
 
-- `cmd/<app>` owns process lifecycle and wires dependencies.
+- `cmd/app` is a single multi-command binary owning process lifecycle and wiring dependencies. Each role is a subcommand: `serve` (HTTP API), `worker` (queue), `scheduler` (schedule ticker), `all` (all three in one process, sharing config, DB pool, and dispatcher), plus the `queue` and `schedule` operator CLIs. Deploy one subcommand per service to scale independently, or run `all` for small single-process deployments.
 - `internal/auth` owns authentication rules, refresh tokens, and required ports.
 - `internal/user` owns the user entity, CRUD rules, and required ports.
 - `internal/mail`, `internal/queue`, and `internal/scheduler` own framework-neutral capabilities.

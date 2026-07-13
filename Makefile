@@ -7,26 +7,29 @@ export MYSQL_URL ?= mysql://$(DATABASE_USER):$(DATABASE_PASSWORD)@tcp(db:3306)/$
 
 MIGRATIONS := internal/adapter/mysql/migrations
 
-.PHONY: build run-server run-worker run-scheduler queue schedule migrate-create migrate \
+.PHONY: build run-server run-worker run-scheduler run-all queue schedule migrate-create migrate \
 	fmt fmt-check vet lint test test-race test-integration vuln check
 
 build:
-	go build ./cmd/server ./cmd/worker ./cmd/scheduler ./cmd/queue ./cmd/schedule
+	go build ./cmd/app
 
 run-server:
-	go run ./cmd/server
+	go run ./cmd/app serve
 
 run-worker:
-	go run ./cmd/worker
+	go run ./cmd/app worker
 
 run-scheduler:
-	go run ./cmd/scheduler
+	go run ./cmd/app scheduler
+
+run-all:
+	go run ./cmd/app all
 
 queue:
-	go run ./cmd/queue $(args)
+	go run ./cmd/app queue $(args)
 
 schedule:
-	go run ./cmd/schedule $(args)
+	go run ./cmd/app schedule $(args)
 
 migrate-create:
 	docker compose exec server migrate create -ext sql -dir $(MIGRATIONS) -seq $(name)

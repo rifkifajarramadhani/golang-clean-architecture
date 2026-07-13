@@ -4,7 +4,6 @@ import (
 	"context"
 	"fmt"
 	"log/slog"
-	"os"
 
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/jobs"
 	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
@@ -15,19 +14,13 @@ import (
 	"gorm.io/gorm"
 )
 
-func main() {
-	if err := newRootCommand().Execute(); err != nil {
-		os.Exit(1)
-	}
-}
-
-func newRootCommand() *cobra.Command {
-	return newRootCommandWithInspector(newInspector)
+func queueCommand() *cobra.Command {
+	return queueCommandWithInspector(newInspector)
 }
 
 type inspectorFactory func() (queue.Inspector, error)
 
-func newRootCommandWithInspector(factory inspectorFactory) *cobra.Command {
+func queueCommandWithInspector(factory inspectorFactory) *cobra.Command {
 	root := &cobra.Command{Use: "queue", Short: "Inspect and operate application queues", SilenceUsage: true}
 	root.AddCommand(statusCommand(factory), failedCommand(factory), retryCommand(factory), deleteCommand(factory), dispatchDemoCommand())
 
