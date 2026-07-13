@@ -38,6 +38,31 @@ Patterns here draw from Effective Go, Uber's Go Style Guide, Go Code Review Comm
 - For maps, initialize before writes; check presence with the two-value form; use struct keys only when they are comparable.
 - Use DTO structs for crossing boundaries (HTTP/grpc/db) and keep domain models separate when needed.
 
+## Persistence Adapter Pattern
+
+Use this layout for any database driver (`mysql`, `postgres`, etc.):
+
+```
+internal/adapter/<driver>/
+├── connection.go          # Open/Close, shared driver helpers
+├── migrations/            # DDL for all domains on this driver
+└── <domain>/              # e.g. identity, order
+    ├── <entity>_model.go  # one persistence model per entity/table
+    ├── repository.go      # implements core-owned ports
+    ├── mappers.go         # domain entity <-> persistence model
+    └── repository_integration_test.go
+```
+
+Checklist when adding a persisted domain:
+
+1. Define the domain entity and repository port in `internal/<domain>/`.
+2. Create `internal/adapter/<driver>/<domain>/` with per-entity model files (not a single shared `models.go`).
+3. Implement the repository; keep cross-table transactions inside one repository when domains share tables.
+4. Add migrations under the driver root; wire the repository in `internal/bootstrap`.
+5. Add integration tests in the domain subpackage, gated behind `<DOMAIN>_TEST_<DRIVER>_DSN` env vars.
+
+Core packages must not import `internal/adapter/**`. Adapter domain subpackages may import their core domain and the driver root; avoid lateral imports between adapter domains unless through shared driver helpers.
+
 ## HTTP/gRPC Service Patterns
 
 - Handlers/adapters validate and translate inputs to use case commands; map responses back to transport types.

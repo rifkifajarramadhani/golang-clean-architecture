@@ -1,4 +1,4 @@
-package mysqladapter
+package identity
 
 import (
 	"context"

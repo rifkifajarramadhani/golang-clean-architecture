@@ -56,6 +56,7 @@ This guide instructs agents how to write Go code that mirrors community best pra
 - Interface adapters map between outer representations (HTTP/gRPC/DB) and inner DTOs/domain models.
 - Frameworks and drivers (HTTP server, gRPC runtime, DB client) are plugins; replaceable without rewriting business logic.
 - Package layout heuristic: `cmd/<app>` wires; `internal/<domain>` holds entities/use cases; adapters live under `internal/adapter`; keep DTOs at boundaries. See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+- Persistence adapters use a two-level layout: `internal/adapter/<driver>/` for connection and migrations; `internal/adapter/<driver>/<domain>/` for repositories and per-entity persistence models. Core entities stay ORM-free.
 
 ## Common Patterns & Snippets
 

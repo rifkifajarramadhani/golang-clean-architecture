@@ -10,7 +10,9 @@ from commands and adapters toward core capabilities.
 - `internal/user` owns the user entity, CRUD rules, and required ports.
 - `internal/mail`, `internal/queue`, and `internal/scheduler` own framework-neutral capabilities.
 - `internal/adapter/http` translates Fiber requests and responses.
-- `internal/adapter/mysql`, `jwt`, `password`, `smtp`, `queue`, and `cron` implement core ports.
+- `internal/adapter/<driver>` (e.g. `mysql`) owns the database connection, migrations, and shared driver helpers.
+- `internal/adapter/<driver>/<domain>` (e.g. `mysql/identity`) implements core persistence ports with per-entity models and repositories.
+- `internal/adapter/jwt`, `password`, `smtp`, `queue`, and `cron` implement other core ports.
 - `internal/adapter/jobs` translates durable jobs into core service calls.
 - `internal/bootstrap` assembles reusable adapter groups without owning process resources.
 - `internal/config` loads and normalizes application configuration.
@@ -34,9 +36,33 @@ These rules are enforced by the `depguard` configuration in `.golangci.yml`.
 4. Outbound adapters implement persistence, tokens, mail, queues, or scheduling.
 5. The inbound adapter maps the result to the external representation.
 
+## Persistence Adapters
+
+Database adapters follow a two-level layout:
+
+- **Driver root** (`internal/adapter/<driver>/`): connection pool, migrations, shared helpers. No domain business logic.
+- **Domain subpackage** (`internal/adapter/<driver>/<domain>/`): repository implementations and per-entity persistence models.
+
+Keep three model layers distinct:
+
+- **Domain entity** — core package (`internal/<domain>/`); no ORM tags or driver imports.
+- **Persistence model** — adapter subpackage; ORM/schema tags; maps to and from the domain entity inside the repository.
+- **Transport DTO** — HTTP/CLI/job boundary only.
+
+Swapping drivers (e.g. `mysql` to `postgres`) means adding `internal/adapter/<new-driver>/<domain>/` packages that implement the same core ports; core packages do not change.
+
+## Adding a Domain
+
+1. Add entity, service, and repository ports in `internal/<domain>/`.
+2. Add `internal/adapter/<driver>/<domain>/` with one persistence-model file per entity and a repository.
+3. Add migrations under the driver root (`internal/adapter/<driver>/migrations/`).
+4. Register the repository constructor in `internal/bootstrap`.
+
+Example: users and auth persistence live in `internal/adapter/mysql/identity`; a future `order` domain would add `internal/order` and `internal/adapter/mysql/order`.
+
 ## Testing
 
 - Core packages use deterministic fakes and table-driven tests.
 - Adapters test translation, error mapping, cancellation, and resource handling.
-- MySQL and queue behavior use integration tests.
+- MySQL and queue behavior use integration tests under driver domain subpackages (e.g. `internal/adapter/mysql/identity`).
 - Commands remain thin and are validated through builds and smoke tests.

@@ -1,12 +1,10 @@
-package mysqladapter
+package identity
 
 import (
 	"context"
 	"errors"
-	"strings"
 	"time"
 
-	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/auth"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/user"
 	"gorm.io/gorm"
@@ -278,7 +276,7 @@ func (r *UserRepository) GetActiveRefreshTokenByHash(ctx context.Context, tokenH
 		"token_hash = ? AND revoked_at IS NULL AND expires_at > ?", tokenHash, time.Now(),
 	).First(&record).Error
 	if err != nil {
-		return nil, mapNotFound(err)
+		return nil, mapRecordNotFound(err)
 	}
 
 	return &auth.RefreshToken{
@@ -419,53 +417,6 @@ func (r *UserRepository) DeleteExpiredOrRevokedRefreshTokens(ctx context.Context
 		Delete(&refreshTokenModel{})
 
 	return result.RowsAffected, result.Error
-}
-
-func fromUser(account *user.User) userModel {
-	return userModel{
-		ID: account.ID, Username: account.Username, Email: account.Email, Password: account.Password, Role: account.Role,
-		EmailVerifiedAt: account.EmailVerifiedAt, PendingEmail: account.PendingEmail, TokenVersion: account.TokenVersion,
-	}
-}
-
-func toUser(record userModel) *user.User {
-	return &user.User{
-		ID: record.ID, Username: record.Username, Email: record.Email, Password: record.Password, Role: record.Role,
-		EmailVerifiedAt: record.EmailVerifiedAt, PendingEmail: record.PendingEmail, TokenVersion: record.TokenVersion,
-	}
-}
-
-func mapUserNotFound(err error) error {
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return user.ErrNotFound
-	}
-
-	return err
-}
-
-func mapWriteError(err error) error {
-	var mysqlErr *mysqldriver.MySQLError
-	if errors.As(err, &mysqlErr) && mysqlErr.Number == 1062 {
-		if strings.Contains(mysqlErr.Message, "username") {
-			return user.ErrDuplicateUsername
-		}
-
-		return user.ErrDuplicateEmail
-	}
-
-	return err
-}
-
-func requireAffected(result *gorm.DB) error {
-	if result.Error != nil {
-		return result.Error
-	}
-
-	if result.RowsAffected == 0 {
-		return user.ErrNotFound
-	}
-
-	return nil
 }
 
 var (

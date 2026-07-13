@@ -66,12 +66,15 @@ Domain-first Clean Architecture; dependencies point from `cmd/` and adapters inw
 - `internal/clock` — wall-clock boundary (`Clock` interface, `Real`, `Func`) so core packages take time as a dependency instead of calling `time.Now()`.
 - `internal/mail`, `internal/queue`, `internal/scheduler` — framework-neutral capabilities (mailables, job/dispatcher abstractions, cron registry) usable independently of any transport.
 - `internal/adapter/http` — Fiber handlers, DTOs, middleware, router. Translates HTTP <-> core service calls.
-- `internal/adapter/mysql`, `jwt`, `password`, `smtp`, `queue`, `cron`, `logging` — concrete implementations of core ports (GORM repositories, JWT signing, bcrypt, SMTP transport, Asynq/DB queue backends, cron parsing, slog setup).
+- `internal/adapter/<driver>` (e.g. `mysql`) — database driver root: connection pool, migrations, shared helpers. Domain repositories live in `internal/adapter/<driver>/<domain>` (e.g. `mysql/identity` for users, refresh tokens, and email verification).
+- `internal/adapter/jwt`, `password`, `smtp`, `queue`, `cron`, `logging` — other concrete implementations of core ports (JWT signing, bcrypt, SMTP transport, Asynq/DB queue backends, cron parsing, slog setup).
 - `internal/adapter/jobs` — translates durable queue jobs into calls against core services (e.g. `jobs.RegisterHandlers`, `jobs.CleanupRefreshTokens`).
 - `internal/bootstrap` — reusable dependency-assembly functions (`WireHTTPServices`, `Dispatcher`, `Inspector`, `Worker`, `ScheduleRegistry`) shared across `cmd/*`; does not own process resources (no opening/closing DB pools itself).
 - `internal/config` — Viper-backed config loading/normalization (`configs/config.yaml` + env var overrides).
 
-Data flow: a `cmd/` entrypoint builds config/logging/infra -> an inbound adapter (HTTP handler, job handler, CLI command) validates/translates the external request -> a core service applies business rules via ports it defines -> outbound adapters (MySQL, JWT, SMTP, queue, cron) implement those ports -> the inbound adapter maps the result back out.
+Data flow: a `cmd/` entrypoint builds config/logging/infra -> an inbound adapter (HTTP handler, job handler, CLI command) validates/translates the external request -> a core service applies business rules via ports it defines -> outbound adapters (database driver subpackages, JWT, SMTP, queue, cron) implement those ports -> the inbound adapter maps the result back out.
+
+When adding a persisted domain (e.g. `order`), add `internal/<domain>` for entities and ports, then `internal/adapter/<driver>/<domain>` with per-entity persistence models and a repository. Wire the repository in `internal/bootstrap`; core packages must not import adapters.
 
 Queue backend is pluggable at runtime via `QUEUE_DRIVER` (`redis` default, or `database`, requiring migration `000003_create_queue_tables`); `internal/bootstrap` selects the concrete adapter based on `cfg.Queue.Driver`. Switching drivers does not migrate in-flight jobs between backends.
 
@@ -81,5 +84,5 @@ Auth details worth knowing before touching that code: refresh tokens are persist
 
 - Core packages (`internal/auth`, `internal/user`, etc.) use deterministic fakes and table-driven tests — no real DB/network.
 - Adapters test translation, error mapping, cancellation, and resource handling.
-- MySQL and queue behavior is covered by integration tests gated behind `*_TEST_MYSQL_DSN` env vars (see `make test-integration`); these aren't run by plain `make test`.
+- MySQL and queue behavior is covered by integration tests gated behind `*_TEST_MYSQL_DSN` env vars (see `make test-integration`); user-security tests live in `internal/adapter/mysql/identity`. These aren't run by plain `make test`.
 - `cmd/` packages stay thin and are validated by build + smoke testing rather than unit tests.

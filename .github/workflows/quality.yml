@@ -76,7 +76,7 @@ jobs:
       - run: go test ./internal/adapter/queue -run DatabaseQueue
         env:
           QUEUE_TEST_MYSQL_DSN: root:greygoose@tcp(localhost:3306)/db_name?parseTime=true
-      - run: go test ./internal/adapter/mysql -run UserSecurity
+      - run: go test ./internal/adapter/mysql/identity -run UserSecurity
         env:
           USER_TEST_MYSQL_DSN: root:greygoose@tcp(localhost:3306)/db_name?parseTime=true
 

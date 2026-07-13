@@ -56,7 +56,7 @@ test-race:
 
 test-integration:
 	QUEUE_TEST_MYSQL_DSN="$${QUEUE_TEST_MYSQL_DSN}" go test ./internal/adapter/queue -run DatabaseQueue
-	USER_TEST_MYSQL_DSN="$${USER_TEST_MYSQL_DSN}" go test ./internal/adapter/mysql -run UserSecurity
+	USER_TEST_MYSQL_DSN="$${USER_TEST_MYSQL_DSN}" go test ./internal/adapter/mysql/identity -run UserSecurity
 
 vuln:
 	govulncheck ./...
