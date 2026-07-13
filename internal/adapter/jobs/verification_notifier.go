@@ -26,5 +26,6 @@ func (n *VerificationNotifier) NotifyVerification(ctx context.Context, account u
 		n.logger.WarnContext(ctx, "queue email verification failed", "user_id", account.ID, "error", err)
 		return err
 	}
+
 	return nil
 }

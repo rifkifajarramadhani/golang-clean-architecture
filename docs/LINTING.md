@@ -7,8 +7,31 @@ Use this checklist to keep Go codebases healthy. Content is drawn from Effective
 - `gofmt`: Mandatory formatting; run before committing.
 - `goimports`: Formats and prunes/organizes imports.
 - `go vet`: Static analysis for suspicious constructs (format string mistakes, unreachable code, copylocks, etc.).
-- `golangci-lint`: Aggregates linters (staticcheck, ineffassign, errcheck, gosimple, revive, govet). Configure per repo to balance signal vs noise.
+- `golangci-lint`: Aggregates formatters and linters configured in `.golangci.yml`. Run via `make lint`.
 - `go test -race`: Detects data races; run on packages with concurrency.
+
+### Formatters (golangci-lint)
+
+Configured in `.golangci.yml` under `formatters.enable`:
+
+- `gofmt`
+- `goimports`
+
+These run as part of `make lint` / `golangci-lint run`. `make fmt` and `make fmt-check` also apply or verify them directly.
+
+### Linters (golangci-lint)
+
+Configured in `.golangci.yml` under `linters.enable`:
+
+- `depguard` — Clean Architecture import boundaries for core packages
+- `errcheck` — unchecked returned errors
+- `errorlint` — error wrapping and comparison idioms
+- `govet` — suspicious constructs
+- `ineffassign` — ineffectual assignments
+- `revive` — style and convention checks
+- `staticcheck` — advanced static analysis
+- `unused` — unused code
+- `wsl_v5` — blank lines between logical statement blocks (see [STYLE_GUIDE.md](STYLE_GUIDE.md#vertical-spacing--logical-blocks))
 
 ## Common Lint Rules
 
@@ -16,6 +39,7 @@ Use this checklist to keep Go codebases healthy. Content is drawn from Effective
 - Errors: check returned errors; wrap with `%w`; avoid swallowing errors. Do not use panics for normal errors.
 - Naming: avoid stutter; keep exported names meaningful; follow standard initialisms (`ID`, `HTTP`).
 - Imports: avoid blank imports unless for side effects (document why); avoid dot-imports in production code.
+- Vertical spacing: separate logical steps with blank lines; keep short error-check chains tight. Enforced by `wsl_v5`.
 - Concurrency: guard shared maps; close channels only from senders; avoid goroutine leaks (tie to context).
 - Defer: close resources immediately after open (`defer f.Close()`); beware of defers in loops for large iterations.
 - Range pitfalls: avoid taking the address of loop variables; use index-based capture.
@@ -25,9 +49,9 @@ Use this checklist to keep Go codebases healthy. Content is drawn from Effective
 
 ## Suggested CI Gates
 
-- `go fmt ./...`
+- `make fmt-check` (or `make fmt` locally)
 - `go vet ./...`
-- `golangci-lint run ./...` (or tailored config)
+- `golangci-lint run ./...` (formatters + linters from `.golangci.yml`, including `wsl_v5`)
 - `go test ./...` (add `-race` for critical paths)
 
 This repository provides these gates through `make check`, `.golangci.yml`, and

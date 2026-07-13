@@ -27,6 +27,7 @@ func (u *usersFake) GetByID(_ context.Context, id int) (*user.User, error) {
 	if id == 1 {
 		role = user.RoleAdmin
 	}
+
 	return &user.User{
 		ID: id, Username: "user_name", Email: "user@example.com", Role: role,
 		TokenVersion: 1, EmailVerifiedAt: &u.verified,
@@ -55,12 +56,14 @@ func (tokensFake) ValidateAccessToken(token string) (appauth.Claims, error) {
 	if token == "admin" {
 		return appauth.Claims{UserID: 1, TokenVersion: 1}, nil
 	}
+
 	return appauth.Claims{UserID: 2, TokenVersion: 1}, nil
 }
 
 func TestUserRouteAuthorizationMatrix(t *testing.T) {
 	app := fiber.New()
 	Setup(app, &usersFake{verified: time.Now()}, authFake{}, tokensFake{}, slog.New(slog.NewTextHandler(io.Discard, nil)))
+
 	tests := []struct {
 		name   string
 		method string
@@ -81,14 +84,18 @@ func TestUserRouteAuthorizationMatrix(t *testing.T) {
 			if test.token != "" {
 				request.Header.Set("Authorization", "Bearer "+test.token)
 			}
+
 			if test.body != "" {
 				request.Header.Set("Content-Type", "application/json")
 			}
+
 			response, err := app.Test(request)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			defer func() { _ = response.Body.Close() }()
+
 			if response.StatusCode != test.want {
 				t.Fatalf("status = %d, want %d", response.StatusCode, test.want)
 			}

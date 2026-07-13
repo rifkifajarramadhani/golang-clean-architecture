@@ -36,6 +36,7 @@ func TestRegistryDueUsesConfiguredTimezone(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := registry.Register(Definition{
 		Name:     "jakarta-midnight",
 		Cron:     "0 0 * * *",
@@ -56,6 +57,7 @@ func TestRunnerUsesDeterministicTaskIDAndIgnoresDuplicate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	if err := registry.Register(Definition{
 		Name: "cleanup",
 		Cron: "* * * * *",
@@ -63,18 +65,22 @@ func TestRunnerUsesDeterministicTaskIDAndIgnoresDuplicate(t *testing.T) {
 	}); err != nil {
 		t.Fatal(err)
 	}
+
 	dispatcher := &fakeDispatcher{err: queue.ErrDuplicateJob}
 	at := time.Date(2026, 6, 11, 12, 34, 45, 0, time.UTC)
 
 	if err := NewRunner(registry, dispatcher).Run(context.Background(), at); err != nil {
 		t.Fatalf("run schedule: %v", err)
 	}
+
 	if len(dispatcher.options) != 1 {
 		t.Fatalf("expected one dispatch, got %d", len(dispatcher.options))
 	}
+
 	if got, want := dispatcher.options[0].TaskID, "schedule:cleanup:20260611T1234"; got != want {
 		t.Fatalf("task id = %q, want %q", got, want)
 	}
+
 	if dispatcher.options[0].Retention < 2*time.Minute {
 		t.Fatalf("retention = %s, want at least 2m", dispatcher.options[0].Retention)
 	}

@@ -21,13 +21,16 @@ func (r *userStoreFake) RegisterUser(_ context.Context, account *user.User, toke
 	r.token = token
 	copy := *account
 	r.created = &copy
+
 	return dispatch()
 }
 func (r *userStoreFake) GetUserByID(context.Context, int) (*user.User, error) {
 	if r.account == nil {
 		return nil, user.ErrNotFound
 	}
+
 	copy := *r.account
+
 	return &copy, nil
 }
 func (r *userStoreFake) GetUserByEmail(context.Context, string) (*user.User, error) {
@@ -51,18 +54,22 @@ func (r *refreshTokenRepoFake) GetActiveRefreshTokenByHash(context.Context, stri
 	if r.stored == nil {
 		return nil, errors.New("not found")
 	}
+
 	return r.stored, nil
 }
 func (r *refreshTokenRepoFake) RevokeRefreshTokenByHash(context.Context, string) error {
 	if r.revokeErr != nil {
 		return r.revokeErr
 	}
+
 	r.revoked = true
+
 	return nil
 }
 func (r *refreshTokenRepoFake) RotateRefreshToken(_ context.Context, _ string, token *RefreshToken) error {
 	r.revoked = true
 	r.stored = token
+
 	return nil
 }
 
@@ -114,6 +121,7 @@ type welcomeNotifierFake struct {
 func (n *welcomeNotifierFake) NotifyWelcome(_ context.Context, account user.User) error {
 	n.called++
 	n.account = account
+
 	return nil
 }
 
@@ -128,10 +136,12 @@ func TestResendVerificationTargetsPendingEmail(t *testing.T) {
 		ID: 42, Email: "old@example.com", PendingEmail: "new@example.com", EmailVerifiedAt: &verified,
 	}}
 	notifier := &notifierFake{}
+
 	service := newTestService(users, &refreshTokenRepoFake{}, &verificationRepoFake{}, tokenServiceFake{}, notifier)
 	if err := service.ResendVerification(context.Background(), "new@example.com"); err != nil {
 		t.Fatal(err)
 	}
+
 	if notifier.email != "new@example.com" {
 		t.Fatalf("verification sent to %q", notifier.email)
 	}
@@ -146,13 +156,16 @@ func TestRegisterHashesPasswordAndSendsSingleUseVerification(t *testing.T) {
 	verification := &verificationRepoFake{}
 	notifier := &notifierFake{}
 	service := newTestService(users, &refreshTokenRepoFake{}, verification, tokenServiceFake{}, notifier)
+
 	account := &user.User{Username: "rifki", Email: "RIFKI@example.com", Password: "long-password"}
 	if err := service.Register(context.Background(), account); err != nil {
 		t.Fatal(err)
 	}
+
 	if users.created == nil || account.Password != "hashed" || account.Role != user.RoleUser || !notifier.called {
 		t.Fatalf("unexpected registration: account=%+v notified=%v", account, notifier.called)
 	}
+
 	if users.token == nil || users.token.TokenHash == notifier.token {
 		t.Fatal("verification token was not stored as a hash")
 	}
@@ -160,6 +173,7 @@ func TestRegisterHashesPasswordAndSendsSingleUseVerification(t *testing.T) {
 
 func TestVerifyEmailSendsWelcomeOnlyForFirstVerification(t *testing.T) {
 	account := &user.User{ID: 42, Username: "rifki", Email: "rifki@example.com"}
+
 	tests := []struct {
 		name              string
 		firstVerification bool
@@ -174,6 +188,7 @@ func TestVerifyEmailSendsWelcomeOnlyForFirstVerification(t *testing.T) {
 				User: account, FirstVerification: test.firstVerification,
 			}}
 			welcome := &welcomeNotifierFake{}
+
 			service := NewService(
 				&userStoreFake{}, &refreshTokenRepoFake{}, verification, tokenServiceFake{}, passwordFake{},
 				nil, welcome, time.Hour, "",
@@ -181,6 +196,7 @@ func TestVerifyEmailSendsWelcomeOnlyForFirstVerification(t *testing.T) {
 			if err := service.VerifyEmail(context.Background(), "token"); err != nil {
 				t.Fatal(err)
 			}
+
 			if welcome.called != test.wantWelcome {
 				t.Fatalf("welcome calls = %d, want %d", welcome.called, test.wantWelcome)
 			}
@@ -192,6 +208,7 @@ func TestVerifyEmailSucceedsWithBestEffortWelcomeNotifier(t *testing.T) {
 	verification := &verificationRepoFake{result: &EmailVerificationResult{
 		User: &user.User{ID: 42}, FirstVerification: true,
 	}}
+
 	service := NewService(
 		&userStoreFake{}, &refreshTokenRepoFake{}, verification, tokenServiceFake{}, passwordFake{},
 		nil, &welcomeNotifierFake{}, time.Hour, "",
@@ -203,6 +220,7 @@ func TestVerifyEmailSucceedsWithBestEffortWelcomeNotifier(t *testing.T) {
 
 func TestLoginRequiresVerifiedEmail(t *testing.T) {
 	users := &userStoreFake{account: &user.User{ID: 42, Password: "hashed", TokenVersion: 1}}
+
 	service := newTestService(users, &refreshTokenRepoFake{}, &verificationRepoFake{}, tokenServiceFake{}, nil)
 	if _, err := service.Login(context.Background(), "user@example.com", "password"); !errors.Is(err, ErrEmailUnverified) {
 		t.Fatalf("error = %v", err)
@@ -211,6 +229,7 @@ func TestLoginRequiresVerifiedEmail(t *testing.T) {
 
 func TestLoginComparesPasswordForUnknownUser(t *testing.T) {
 	spy := &passwordSpy{}
+
 	service := NewService(
 		&userStoreFake{}, &refreshTokenRepoFake{}, &verificationRepoFake{}, tokenServiceFake{}, spy,
 		nil, nil, time.Hour, "",
@@ -218,6 +237,7 @@ func TestLoginComparesPasswordForUnknownUser(t *testing.T) {
 	if _, err := service.Login(context.Background(), "unknown@example.com", "password"); !errors.Is(err, ErrInvalidCredentials) {
 		t.Fatalf("error = %v", err)
 	}
+
 	if spy.compares != 1 {
 		t.Fatalf("password compares = %d, want 1 (timing-equalizing dummy compare)", spy.compares)
 	}
@@ -250,10 +270,12 @@ func TestLogoutRevokesTokenAndIsIdempotent(t *testing.T) {
 		t.Run(test.name, func(t *testing.T) {
 			refresh := &refreshTokenRepoFake{revokeErr: test.revokeErr}
 			service := newTestService(&userStoreFake{}, refresh, &verificationRepoFake{}, tokenServiceFake{}, nil)
+
 			err := service.Logout(context.Background(), test.token)
 			if (err != nil) != test.wantErr {
 				t.Fatalf("error = %v, wantErr %v", err, test.wantErr)
 			}
+
 			if refresh.revoked != test.wantRevoked {
 				t.Fatalf("revoked = %v, want %v", refresh.revoked, test.wantRevoked)
 			}
@@ -267,12 +289,14 @@ func TestRefreshUsesStableUserIDAndRejectsStaleTokenVersion(t *testing.T) {
 		ID: 42, Username: "new-name", EmailVerifiedAt: &verified, TokenVersion: 2,
 	}}
 	refresh := &refreshTokenRepoFake{stored: &RefreshToken{UserID: 42}}
+
 	service := newTestService(users, refresh, &verificationRepoFake{}, tokenServiceFake{
 		claims: Claims{UserID: 42, TokenVersion: 1},
 	}, nil)
 	if _, err := service.Refresh(context.Background(), "old-refresh"); !errors.Is(err, ErrUnauthorized) {
 		t.Fatalf("stale token error = %v", err)
 	}
+
 	if refresh.revoked {
 		t.Fatal("stale token should not be rotated")
 	}
@@ -281,6 +305,7 @@ func TestRefreshUsesStableUserIDAndRejectsStaleTokenVersion(t *testing.T) {
 	if _, err := service.Refresh(context.Background(), "valid-refresh"); err != nil {
 		t.Fatal(err)
 	}
+
 	if !refresh.revoked {
 		t.Fatal("refresh token was not rotated")
 	}

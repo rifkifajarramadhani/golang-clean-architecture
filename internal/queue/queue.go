@@ -80,13 +80,17 @@ func (r *HandlerRegistry) Register(jobType string, handler Handler) error {
 	if jobType == "" {
 		return errors.New("job type is required")
 	}
+
 	if handler == nil {
 		return errors.New("job handler is required")
 	}
+
 	if _, exists := r.handlers[jobType]; exists {
 		return fmt.Errorf("handler already registered for %q", jobType)
 	}
+
 	r.handlers[jobType] = handler
+
 	return nil
 }
 
@@ -95,5 +99,6 @@ func (r *HandlerRegistry) Handlers() map[string]Handler {
 	for jobType, handler := range r.handlers {
 		handlers[jobType] = handler
 	}
+
 	return handlers
 }

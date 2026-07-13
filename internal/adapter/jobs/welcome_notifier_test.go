@@ -23,6 +23,7 @@ func TestWelcomeNotifierIsBestEffort(t *testing.T) {
 		nil,
 		failingMailDispatcher{},
 	)
+
 	notifier := NewWelcomeNotifier(mailer, slog.New(slog.NewTextHandler(io.Discard, nil)))
 	if err := notifier.NotifyWelcome(context.Background(), user.User{
 		ID: 42, Username: "rifki", Email: "rifki@example.com",

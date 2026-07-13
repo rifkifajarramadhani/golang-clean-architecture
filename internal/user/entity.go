@@ -46,12 +46,14 @@ func (u *User) UpdateProfile(username, email string) error {
 	if err := NormalizeAndValidate(candidate, false); err != nil {
 		return err
 	}
+
 	u.Username = candidate.Username
 	if candidate.Email == u.Email {
 		u.PendingEmail = ""
 	} else {
 		u.PendingEmail = candidate.Email
 	}
+
 	return nil
 }
 
@@ -60,7 +62,9 @@ func (u *User) AssignRole(role Role) error {
 	if role == RoleAdmin && !u.CanPromote() {
 		return ErrForbidden
 	}
+
 	u.Role = role
+
 	return nil
 }
 
@@ -71,8 +75,10 @@ func (u *User) VerifyEmail(at time.Time) bool {
 		u.Email = u.PendingEmail
 		u.PendingEmail = ""
 	}
+
 	u.EmailVerifiedAt = &at
 	u.TokenVersion++
+
 	return first
 }
 

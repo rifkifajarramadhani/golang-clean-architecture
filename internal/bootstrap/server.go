@@ -50,5 +50,6 @@ func WireHTTPServices(cfg *config.Config, db *gorm.DB, logger *slog.Logger, disp
 		time.Duration(cfg.Auth.VerificationTTLHours)*time.Hour,
 		cfg.Auth.BootstrapAdminEmail,
 	)
+
 	return HTTPServices{Users: users, Auth: authService, Tokens: tokens}
 }

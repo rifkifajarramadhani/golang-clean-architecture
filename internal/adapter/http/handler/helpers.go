@@ -15,14 +15,18 @@ func bindJSON(c fiber.Ctx, destination any) error {
 	if !c.IsJSON() {
 		return fiber.ErrUnsupportedMediaType
 	}
+
 	decoder := json.NewDecoder(bytes.NewReader(c.Body()))
 	decoder.DisallowUnknownFields()
+
 	if err := decoder.Decode(destination); err != nil {
 		return fiber.ErrBadRequest
 	}
+
 	if err := decoder.Decode(&struct{}{}); !errors.Is(err, io.EOF) {
 		return fiber.ErrBadRequest
 	}
+
 	return nil
 }
 
@@ -30,6 +34,7 @@ func writeBindError(c fiber.Ctx, err error) error {
 	if errors.Is(err, fiber.ErrUnsupportedMediaType) {
 		return c.Status(fiber.StatusUnsupportedMediaType).JSON(fiber.Map{"error": "content type must be application/json"})
 	}
+
 	return c.Status(fiber.StatusBadRequest).JSON(fiber.Map{"error": "invalid request body"})
 }
 

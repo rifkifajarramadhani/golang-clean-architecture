@@ -30,14 +30,17 @@ func (m EmailVerification) Content() (Content, error) {
 		Username string
 		Token    string
 	}{Username: m.Username, Token: m.Token}
+
 	text, err := renderVerificationTemplate("email-verification.txt", emailVerificationTextTemplate, data)
 	if err != nil {
 		return Content{}, err
 	}
+
 	html, err := renderVerificationTemplate("email-verification.html", emailVerificationHTMLTemplate, data)
 	if err != nil {
 		return Content{}, err
 	}
+
 	return Content{Text: text, HTML: html}, nil
 }
 
@@ -48,9 +51,11 @@ func renderVerificationTemplate(name, source string, data any) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	var output bytes.Buffer
 	if err := tmpl.Execute(&output, data); err != nil {
 		return "", err
 	}
+
 	return output.String(), nil
 }

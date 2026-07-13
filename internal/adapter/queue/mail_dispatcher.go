@@ -23,6 +23,7 @@ func (d *MailDispatcher) DispatchMessage(ctx context.Context, job appmail.SendJo
 	if err != nil {
 		return nil, err
 	}
+
 	return &appmail.QueuedMessageInfo{ID: info.ID, Queue: info.Queue}, nil
 }
 

@@ -17,6 +17,44 @@ This guide merges the core practices from Effective Go, Uber's Go Style Guide, a
 - Avoid long lines when it hurts readability, but don't obsess over hard limits.
 - Do not leave commented-out code or unused imports.
 
+## Vertical Spacing & Logical Blocks
+
+`gofmt` handles indentation and basic declaration spacing; it does **not** enforce blank lines between logical steps inside functions. This repo enforces that via the `wsl_v5` linter (see [LINTING.md](LINTING.md)).
+
+Separate distinct logical steps with a blank line:
+
+- After a setup or error-handling block, before the next unrelated statement (`defer`, `var`, control flow, or I/O).
+- Before `switch`, `for`, `go`, or `select` when they start a new step after prior statements.
+- After a loop or conditional block, before the next statement that continues the function.
+- Before table-driven test case slices (`tests := []struct{...}`) when they follow helper setup.
+
+Keep related sequences tight—do not add blank lines inside short error-check / early-return chains:
+
+```go
+if err := do(); err != nil {
+    return fmt.Errorf("do: %w", err)
+}
+
+result, err := next()
+if err != nil {
+    return fmt.Errorf("next: %w", err)
+}
+```
+
+```go
+// Avoid: cuddling unrelated declarations or control flow
+if err != nil {
+    return err
+}
+var cfg Config // needs blank line above
+
+// Avoid: switch immediately after unrelated setup
+mailTransport, err := smtp.New(cfg.Mail)
+switch cfg.Driver { // needs blank line above
+```
+
+Run `make lint` to catch violations; `golangci-lint run --enable-only=wsl_v5 --fix ./...` can auto-fix many of them.
+
 ## Naming
 
 - Package names: short, lower-case, no underscores; name after what the package provides. Avoid stutter (`bytes.Buffer` not `bytes.ByteBuffer`).

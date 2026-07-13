@@ -17,13 +17,16 @@ func Setup(app *fiber.App, users handler.UserService, auth handler.AuthService, 
 		if requestID == "" {
 			requestID = uuid.NewString()
 		}
+
 		c.Set("X-Request-ID", requestID)
+
 		started := time.Now()
 		err := c.Next()
 		logger.InfoContext(c.Context(), "http request",
 			"request_id", requestID, "method", c.Method(), "path", c.Path(),
 			"status", c.Response().StatusCode(), "duration", time.Since(started),
 		)
+
 		return err
 	})
 	api := app.Group("/api")

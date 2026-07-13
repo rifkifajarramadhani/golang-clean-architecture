@@ -11,8 +11,8 @@ Detailed agent guidance already lives in these files — read them, don't duplic
 - [AGENTS.md](AGENTS.md) — Go style rules pulled from Effective Go, Uber's style guide, Go Code Review Comments, and the Clean Architecture essay.
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) — package map, dependency rules, data flow.
 - [docs/PATTERNS.md](docs/PATTERNS.md) — common implementation patterns.
-- [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md) — idioms and formatting.
-- [docs/LINTING.md](docs/LINTING.md) — tooling and lint checklist.
+- [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md) — idioms, formatting, and vertical spacing between logical blocks.
+- [docs/LINTING.md](docs/LINTING.md) — tooling and lint checklist (includes `wsl_v5`).
 - [README.md](README.md) — full setup, API endpoints, troubleshooting.
 
 ## Commands
@@ -25,7 +25,7 @@ make run-scheduler       # go run ./cmd/scheduler
 make fmt                 # goimports + gofmt -w
 make fmt-check           # verify formatting without writing
 make vet                 # go vet ./...
-make lint                # golangci-lint run
+make lint                # golangci-lint run (formatters + linters, incl. wsl_v5)
 make test                # go test ./...
 make test-race           # go test -race ./...
 make test-integration    # MySQL queue + user-security integration tests (needs QUEUE_TEST_MYSQL_DSN / USER_TEST_MYSQL_DSN)
@@ -59,7 +59,7 @@ Local dev stack (server + worker + scheduler + MySQL + Redis + Mailpit): `docker
 
 ## Architecture
 
-Domain-first Clean Architecture; dependencies point from `cmd/` and adapters inward toward core packages, never the reverse. This is enforced by `depguard` in [.golangci.yml](.golangci.yml): `internal/auth`, `internal/user`, `internal/mail`, `internal/queue`, `internal/scheduler` (the "core" packages) must not import `internal/adapter`, `internal/bootstrap`, or `internal/config`.
+Domain-first Clean Architecture; dependencies point from `cmd/` and adapters inward toward core packages, never the reverse. This is enforced by `depguard` in [.golangci.yml](.golangci.yml): `internal/auth`, `internal/user`, `internal/mail`, `internal/queue`, `internal/scheduler` (the "core" packages) must not import `internal/adapter`, `internal/bootstrap`, or `internal/config`. Logical-block blank-line spacing is enforced by `wsl_v5` in the same config.
 
 - `cmd/<app>` (server, worker, scheduler, queue, schedule) — owns process lifecycle, creates config/logging/DB/queue resources, and wires dependencies. Kept thin.
 - `internal/auth`, `internal/user` — core entities, use-case rules, and the ports (interfaces) adapters must implement. Define interfaces at the consumption site.

@@ -23,15 +23,19 @@ func JWTAuth(tokens AccessTokenValidator, users UserResolver) fiber.Handler {
 		if len(parts) != 2 || parts[0] != "Bearer" || parts[1] == "" {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid authorization header"})
 		}
+
 		claims, err := tokens.ValidateAccessToken(parts[1])
 		if err != nil {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "invalid or expired token"})
 		}
+
 		account, err := users.GetByID(c.Context(), claims.UserID)
 		if err != nil || account == nil || account.TokenVersion != claims.TokenVersion || !account.EmailVerified() {
 			return c.Status(fiber.StatusUnauthorized).JSON(fiber.Map{"error": "unauthorized"})
 		}
+
 		c.Locals("auth_user", account)
+
 		return c.Next()
 	}
 }
@@ -41,5 +45,6 @@ func AdminOnly(c fiber.Ctx) error {
 	if !ok || account == nil || !account.IsAdmin() {
 		return c.Status(fiber.StatusForbidden).JSON(fiber.Map{"error": "forbidden"})
 	}
+
 	return c.Next()
 }

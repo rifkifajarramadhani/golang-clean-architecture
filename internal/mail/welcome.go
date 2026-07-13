@@ -33,10 +33,12 @@ func (m Welcome) Content() (Content, error) {
 	if err != nil {
 		return Content{}, err
 	}
+
 	html, err := renderTemplate("welcome.html", welcomeHTMLTemplate, data)
 	if err != nil {
 		return Content{}, err
 	}
+
 	return Content{Text: text, HTML: html}, nil
 }
 
@@ -47,9 +49,11 @@ func renderTemplate(name, source string, data any) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	var output bytes.Buffer
 	if err := tmpl.Execute(&output, data); err != nil {
 		return "", err
 	}
+
 	return output.String(), nil
 }

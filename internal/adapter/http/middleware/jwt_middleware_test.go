@@ -32,6 +32,7 @@ func (r userResolverFake) GetByID(context.Context, int) (*user.User, error) {
 
 func TestJWTAuthResolvesCurrentUserAndRejectsStaleOrDeletedAccounts(t *testing.T) {
 	verified := time.Now()
+
 	tests := []struct {
 		name     string
 		resolver userResolverFake
@@ -69,13 +70,17 @@ func TestJWTAuthResolvesCurrentUserAndRejectsStaleOrDeletedAccounts(t *testing.T
 			app.Get("/", JWTAuth(tokenValidatorFake{claims: test.claims}, test.resolver), func(c fiber.Ctx) error {
 				return c.SendStatus(fiber.StatusOK)
 			})
+
 			request := httptest.NewRequest("GET", "/", nil)
 			request.Header.Set("Authorization", "Bearer token")
+
 			response, err := app.Test(request)
 			if err != nil {
 				t.Fatal(err)
 			}
+
 			defer func() { _ = response.Body.Close() }()
+
 			if response.StatusCode != test.want {
 				t.Fatalf("status = %d, want %d", response.StatusCode, test.want)
 			}
@@ -99,11 +104,14 @@ func TestAdminOnly(t *testing.T) {
 		}, AdminOnly, func(c fiber.Ctx) error {
 			return c.SendStatus(fiber.StatusOK)
 		})
+
 		response, err := app.Test(httptest.NewRequest("GET", "/", nil))
 		if err != nil {
 			t.Fatal(err)
 		}
+
 		defer func() { _ = response.Body.Close() }()
+
 		if response.StatusCode != test.want {
 			t.Fatalf("role %q status = %d, want %d", test.role, response.StatusCode, test.want)
 		}

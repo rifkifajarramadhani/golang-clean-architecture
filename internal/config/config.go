@@ -109,6 +109,7 @@ func Load() (*Config, error) {
 	instance.AddConfigPath("./configs")
 	instance.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	instance.AutomaticEnv()
+
 	for _, key := range configKeys {
 		if err := instance.BindEnv(key); err != nil {
 			return nil, fmt.Errorf("bind environment key %s: %w", key, err)
@@ -126,16 +127,21 @@ func Load() (*Config, error) {
 	if err := instance.Unmarshal(&config); err != nil {
 		return nil, err
 	}
+
 	if err := normalizeQueueConfig(&config.Queue); err != nil {
 		return nil, err
 	}
+
 	if err := normalizeMailConfig(&config.Mail); err != nil {
 		return nil, err
 	}
+
 	if err := normalizeAuthConfig(&config.App, &config.Auth); err != nil {
 		return nil, err
 	}
+
 	normalizeLoggingConfig(&config.Logging)
+
 	if err := validateConfig(&config); err != nil {
 		return nil, err
 	}
@@ -158,6 +164,7 @@ func loadDotEnv(filename string) error {
 	if err := godotenv.Load(filename); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return fmt.Errorf("load dotenv file: %w", err)
 	}
+
 	return nil
 }
 
@@ -178,24 +185,30 @@ func validateConfig(config *Config) error {
 	if err != nil || port < 1 || port > 65535 {
 		return fmt.Errorf("app port must be between 1 and 65535")
 	}
+
 	if strings.TrimSpace(config.Database.Host) == "" || config.Database.Port < 1 || config.Database.Port > 65535 ||
 		strings.TrimSpace(config.Database.User) == "" || strings.TrimSpace(config.Database.Name) == "" {
 		return fmt.Errorf("database host, port, user, and name must be valid")
 	}
+
 	if isProduction(config.App.Environment) && strings.TrimSpace(config.Database.Password) == "" {
 		return fmt.Errorf("DATABASE_PASSWORD is required in production")
 	}
+
 	if _, _, err := net.SplitHostPort(config.Redis.Address); err != nil {
 		return fmt.Errorf("redis address must be host:port")
 	}
+
 	if len(config.Queue.Queues) == 0 {
 		return fmt.Errorf("at least one queue must be configured")
 	}
+
 	for name, weight := range config.Queue.Queues {
 		if strings.TrimSpace(name) == "" || weight <= 0 {
 			return fmt.Errorf("queue names must be non-empty and weights must be positive")
 		}
 	}
+
 	return nil
 }
 
@@ -204,46 +217,57 @@ func normalizeAuthConfig(app *AppConfig, auth *AuthConfig) error {
 	if app.Environment == "" {
 		app.Environment = "development"
 	}
+
 	auth.Issuer = strings.TrimSpace(auth.Issuer)
 	if auth.Issuer == "" {
 		auth.Issuer = "golang-clean-architecture"
 	}
+
 	auth.Audience = strings.TrimSpace(auth.Audience)
 	if auth.Audience == "" {
 		auth.Audience = "golang-clean-architecture-api"
 	}
+
 	if auth.VerificationTTLHours <= 0 {
 		auth.VerificationTTLHours = 24
 	}
+
 	if auth.AccessTTLMinutes <= 0 {
 		auth.AccessTTLMinutes = 15
 	}
+
 	if auth.RefreshTTLHours <= 0 {
 		auth.RefreshTTLHours = 168
 	}
+
 	auth.BootstrapAdminEmail = strings.ToLower(strings.TrimSpace(auth.BootstrapAdminEmail))
 	if auth.BootstrapAdminEmail != "" {
 		address, err := stdmail.ParseAddress(auth.BootstrapAdminEmail)
 		if err != nil {
 			return fmt.Errorf("invalid bootstrap admin email: %w", err)
 		}
+
 		if address.Address != auth.BootstrapAdminEmail {
 			return fmt.Errorf("invalid bootstrap admin email %q", auth.BootstrapAdminEmail)
 		}
 	}
+
 	if isProduction(app.Environment) {
 		if strings.TrimSpace(auth.JWTAccessSecret) == "" {
 			return fmt.Errorf("AUTH_JWT_ACCESS_SECRET is required in production")
 		}
+
 		if strings.TrimSpace(auth.JWTRefreshSecret) == "" {
 			return fmt.Errorf("AUTH_JWT_REFRESH_SECRET is required in production")
 		}
+
 		if len(auth.JWTAccessSecret) < 32 || len(auth.JWTRefreshSecret) < 32 ||
 			auth.JWTAccessSecret == auth.JWTRefreshSecret ||
 			isPlaceholderSecret(auth.JWTAccessSecret) || isPlaceholderSecret(auth.JWTRefreshSecret) {
 			return fmt.Errorf("production JWT secrets must be distinct, non-placeholder values of at least 32 bytes")
 		}
 	}
+
 	return nil
 }
 
@@ -261,6 +285,7 @@ func normalizeLoggingConfig(logging *LoggingConfig) {
 	if logging.Level == "" {
 		logging.Level = "info"
 	}
+
 	if strings.TrimSpace(logging.File) == "" {
 		logging.File = "logs/app.log"
 	}
@@ -271,28 +296,35 @@ func normalizeMailConfig(mail *MailConfig) error {
 	if mail.Host == "" {
 		mail.Host = "localhost"
 	}
+
 	if mail.Port <= 0 {
 		mail.Port = 1025
 	}
+
 	mail.Encryption = strings.ToLower(strings.TrimSpace(mail.Encryption))
 	if mail.Encryption == "" {
 		mail.Encryption = MailEncryptionNone
 	}
+
 	switch mail.Encryption {
 	case MailEncryptionNone, MailEncryptionStartTLS, MailEncryptionTLS:
 	default:
 		return fmt.Errorf("unsupported mail encryption %q", mail.Encryption)
 	}
+
 	mail.FromAddress = strings.TrimSpace(mail.FromAddress)
 	if mail.FromAddress == "" {
 		mail.FromAddress = "hello@example.com"
 	}
+
 	if _, err := stdmail.ParseAddress(mail.FromAddress); err != nil {
 		return fmt.Errorf("invalid mail from address: %w", err)
 	}
+
 	if strings.TrimSpace(mail.FromName) == "" {
 		mail.FromName = "Golang Clean Architecture"
 	}
+
 	return nil
 }
 
@@ -301,20 +333,26 @@ func normalizeQueueConfig(queue *QueueConfig) error {
 	if queue.Driver == "" {
 		queue.Driver = QueueDriverRedis
 	}
+
 	if queue.Driver != QueueDriverDatabase && queue.Driver != QueueDriverRedis {
 		return fmt.Errorf("unsupported queue driver %q", queue.Driver)
 	}
+
 	if queue.Concurrency <= 0 {
 		queue.Concurrency = 1
 	}
+
 	if queue.ShutdownSeconds <= 0 {
 		queue.ShutdownSeconds = 30
 	}
+
 	if queue.Database.PollIntervalMilliseconds <= 0 {
 		queue.Database.PollIntervalMilliseconds = 500
 	}
+
 	if queue.Database.ReservationSeconds <= 0 {
 		queue.Database.ReservationSeconds = 60
 	}
+
 	return nil
 }

@@ -13,6 +13,7 @@ func TestHandlerRegistryRejectsDuplicateTypes(t *testing.T) {
 	if err := registry.Register("example", handler); err != nil {
 		t.Fatalf("register first handler: %v", err)
 	}
+
 	if err := registry.Register("example", handler); err == nil {
 		t.Fatal("expected duplicate registration error")
 	}
@@ -26,6 +27,7 @@ func TestHandlerRegistryReturnsCopy(t *testing.T) {
 
 	handlers := registry.Handlers()
 	delete(handlers, "example")
+
 	if len(registry.Handlers()) != 1 {
 		t.Fatal("registry was mutated through returned map")
 	}

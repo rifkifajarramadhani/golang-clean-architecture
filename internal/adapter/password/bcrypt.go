@@ -9,6 +9,7 @@ func (Bcrypt) Hash(password string) (string, error) {
 	if err != nil {
 		return "", err
 	}
+
 	return string(hashed), nil
 }
 

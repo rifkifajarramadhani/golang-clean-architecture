@@ -11,12 +11,13 @@ This guide instructs agents how to write Go code that mirrors community best pra
 
 - Default to standard library and idiomatic patterns before adding dependencies; vet any new library (maintenance, license, API stability) via Awesome Go or upstream docs.
 - Always format (`gofmt`/`goimports`) and lint (`go vet`, `golangci-lint`) before shipping. Run tests with `go test` and `-race` when concurrency is involved.
+- Follow vertical spacing rules in [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md#vertical-spacing--logical-blocks); `wsl_v5` enforces blank lines between logical blocks via `make lint`.
 - Keep architecture clean: business logic does not depend on frameworks, databases, or transport types. Wire dependencies at the edges.
 - Prefer clarity over cleverness; small, focused functions; early returns on errors.
 
 ## Effective Go Essentials
 
-- **Formatting:** `gofmt` is canonical; keep imports grouped stdlib/third-party/local.
+- **Formatting:** `gofmt` is canonical; keep imports grouped stdlib/third-party/local. Blank lines between logical steps are required—see [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md#vertical-spacing--logical-blocks).
 - **Comments:** Full sentences starting with the name being described; explain why, not just what.
 - **Names:** Package names are short and lower case. Avoid stutter (`bytes.Buffer`). Use common initialisms (`ID`, `HTTP`).
 - **Declarations:** Use `:=` for locals; let zero values work; composite literals with field names when many fields.
@@ -124,8 +125,8 @@ This guide instructs agents how to write Go code that mirrors community best pra
 
 ## Tooling & Quality
 
-- Always run `gofmt`/`goimports` before committing.
-- Run `go vet` for static checks; add `golangci-lint run` to CI with linters tuned per repo.
+- Always run `gofmt`/`goimports` before committing (`make fmt` / `make fmt-check`).
+- Run `go vet` for static checks; run `make lint` for golangci-lint (formatters + linters, including `wsl_v5` for logical-block spacing).
 - Use `go test` with `-race` for concurrent code paths.
 - Keep CI fast; cache module downloads; avoid flaky tests.
 

@@ -45,13 +45,16 @@ func (s *Service) Create(ctx context.Context, account *User) error {
 	if err := NormalizeAndValidate(account, true); err != nil {
 		return err
 	}
+
 	hashedPassword, err := s.password.Hash(account.Password)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
+
 	account.Password = hashedPassword
 	account.Role = RoleUser
 	account.TokenVersion = 1
+
 	return s.repo.Create(ctx, account)
 }
 
@@ -64,6 +67,7 @@ func (s *Service) GetByID(ctx context.Context, id int) (*User, error) {
 	if id <= 0 {
 		return nil, ErrNotFound
 	}
+
 	return s.repo.GetByID(ctx, id)
 }
 
@@ -72,13 +76,16 @@ func (s *Service) UpdateProfile(ctx context.Context, id int, username, email str
 	if err != nil {
 		return err
 	}
+
 	if err := account.UpdateProfile(username, email); err != nil {
 		return err
 	}
+
 	nextEmail := account.Email
 	if account.PendingEmail != "" {
 		nextEmail = account.PendingEmail
 	}
+
 	return s.repo.UpdateProfile(ctx, id, account.Username, nextEmail)
 }
 
@@ -86,18 +93,23 @@ func (s *Service) ChangePassword(ctx context.Context, id int, currentPassword, n
 	if err := ValidatePassword(newPassword); err != nil {
 		return err
 	}
+
 	account, err := s.repo.GetByID(ctx, id)
 	if err != nil {
 		return err
 	}
+
 	if s.password.Compare(account.Password, currentPassword) != nil {
 		return ErrInvalidPassword
 	}
+
 	hashed, err := s.password.Hash(newPassword)
 	if err != nil {
 		return fmt.Errorf("hash password: %w", err)
 	}
+
 	account.ChangePasswordHash(hashed)
+
 	return s.repo.ChangePassword(ctx, id, account.Password)
 }
 
@@ -106,33 +118,41 @@ func (s *Service) ChangeRole(ctx context.Context, actorID, targetID int, role st
 	if err != nil {
 		return err
 	}
+
 	if actorID == targetID {
 		return ErrForbidden
 	}
+
 	actor, err := s.repo.GetByID(ctx, actorID)
 	if err != nil || actor == nil || !actor.IsAdmin() {
 		return ErrForbidden
 	}
+
 	target, err := s.repo.GetByID(ctx, targetID)
 	if err != nil {
 		return err
 	}
+
 	if parsedRole == RoleAdmin && !target.CanPromote() {
 		return ErrForbidden
 	}
+
 	wasAdmin := target.IsAdmin()
 	if wasAdmin && parsedRole != RoleAdmin {
 		count, err := s.repo.CountAdmins(ctx)
 		if err != nil {
 			return err
 		}
+
 		if count <= 1 {
 			return ErrLastAdmin
 		}
 	}
+
 	if err := target.AssignRole(parsedRole); err != nil {
 		return err
 	}
+
 	return s.repo.ChangeRole(ctx, actorID, targetID, parsedRole)
 }
 
@@ -140,23 +160,28 @@ func (s *Service) Delete(ctx context.Context, actorID, targetID int) error {
 	if actorID == targetID {
 		return ErrForbidden
 	}
+
 	actor, err := s.repo.GetByID(ctx, actorID)
 	if err != nil || actor == nil || !actor.IsAdmin() {
 		return ErrForbidden
 	}
+
 	target, err := s.repo.GetByID(ctx, targetID)
 	if err != nil {
 		return err
 	}
+
 	if target.IsAdmin() {
 		count, err := s.repo.CountAdmins(ctx)
 		if err != nil {
 			return err
 		}
+
 		if count <= 1 {
 			return ErrLastAdmin
 		}
 	}
+
 	return s.repo.Delete(ctx, targetID)
 }
 
@@ -165,25 +190,31 @@ func (s *Service) DeleteSelf(ctx context.Context, id int, currentPassword string
 	if err != nil {
 		return err
 	}
+
 	if s.password.Compare(account.Password, currentPassword) != nil {
 		return ErrInvalidPassword
 	}
+
 	return s.repo.Delete(ctx, id)
 }
 
 func NormalizeAndValidate(account *User, requirePassword bool) error {
 	account.Username = strings.TrimSpace(account.Username)
+
 	account.Email = NormalizeEmail(account.Email)
 	if !usernamePattern.MatchString(account.Username) {
 		return fmt.Errorf("%w: username must be 3-50 letters, digits, underscores, or hyphens", ErrInvalidInput)
 	}
+
 	address, err := mail.ParseAddress(account.Email)
 	if err != nil || address.Address != account.Email || !strings.Contains(account.Email, "@") {
 		return fmt.Errorf("%w: invalid email", ErrInvalidInput)
 	}
+
 	if requirePassword {
 		return ValidatePassword(account.Password)
 	}
+
 	return nil
 }
 
@@ -191,6 +222,7 @@ func ValidatePassword(password string) error {
 	if len(password) < 12 || len(password) > 72 {
 		return fmt.Errorf("%w: password must be 12-72 bytes", ErrInvalidInput)
 	}
+
 	return nil
 }
 
@@ -202,11 +234,14 @@ func NormalizePagination(page, limit int) (int, int) {
 	if page < 1 {
 		page = DefaultPage
 	}
+
 	if limit < 1 {
 		limit = DefaultLimit
 	}
+
 	if limit > MaxLimit {
 		limit = MaxLimit
 	}
+
 	return page, limit
 }

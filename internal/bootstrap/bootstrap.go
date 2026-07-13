@@ -29,6 +29,7 @@ func Dispatcher(cfg *config.Config, db *gorm.DB) (queue.Dispatcher, error) {
 		if db == nil {
 			return nil, fmt.Errorf("database connection is required for database queue driver")
 		}
+
 		return queueinfra.NewDatabaseDispatcher(db), nil
 	default:
 		return nil, fmt.Errorf("unsupported queue driver %q", cfg.Queue.Driver)
@@ -43,6 +44,7 @@ func Inspector(cfg *config.Config, db *gorm.DB) (queue.Inspector, error) {
 		if db == nil {
 			return nil, fmt.Errorf("database connection is required for database queue driver")
 		}
+
 		return queueinfra.NewDatabaseInspector(db, cfg.Queue.Queues), nil
 	default:
 		return nil, fmt.Errorf("unsupported queue driver %q", cfg.Queue.Driver)
@@ -53,16 +55,20 @@ func Worker(cfg *config.Config, db *gorm.DB, logger *slog.Logger) (queue.Worker,
 	if db == nil {
 		return nil, fmt.Errorf("database connection is required by worker job handlers")
 	}
+
 	repository := mysqlRepository(db)
 	maintenance := auth.NewMaintenanceService(repository)
+
 	mailTransport, err := smtp.NewTransport(cfg.Mail)
 	if err != nil {
 		return nil, err
 	}
+
 	registry := queue.NewHandlerRegistry()
 	if err := jobs.RegisterHandlers(registry, maintenance, mailTransport, logger); err != nil {
 		return nil, fmt.Errorf("register job handlers: %w", err)
 	}
+
 	switch cfg.Queue.Driver {
 	case config.QueueDriverRedis:
 		return queueinfra.NewRedisWorker(RedisOptions(cfg), cfg.Queue, registry), nil
@@ -78,10 +84,12 @@ func ScheduleRegistry(cfg *config.Config) (*scheduler.Registry, error) {
 	if err != nil {
 		return nil, err
 	}
+
 	err = registry.Register(scheduler.Definition{
 		Name: "cleanup-refresh-tokens", Cron: "0 0 * * *", Timezone: cfg.Scheduler.Timezone,
 		Job:             func() queue.Job { return jobs.CleanupRefreshTokens{} },
 		DispatchOptions: queue.DispatchOptions{Queue: "maintenance", MaxRetry: 3, Retention: 2 * time.Minute},
 	})
+
 	return registry, err
 }

@@ -45,22 +45,28 @@ func TestRegisterResponseCompatibility(t *testing.T) {
 		authServiceFake{},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	).Register)
+
 	request := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBufferString(
 		`{"username":"rifki","email":"rifki@example.com","password":"long-password"}`,
 	))
 	request.Header.Set("Content-Type", "application/json")
+
 	response, err := app.Test(request)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer func() { _ = response.Body.Close() }()
+
 	if response.StatusCode != fiber.StatusCreated {
 		t.Fatalf("status = %d", response.StatusCode)
 	}
+
 	var body map[string]any
 	if err := json.NewDecoder(response.Body).Decode(&body); err != nil {
 		t.Fatal(err)
 	}
+
 	if body["id"] != float64(42) || body["username"] != "rifki" || body["email"] != "rifki@example.com" {
 		t.Fatalf("response = %+v", body)
 	}
@@ -72,15 +78,19 @@ func TestRegisterRejectsUnknownJSONFields(t *testing.T) {
 		authServiceFake{},
 		slog.New(slog.NewTextHandler(io.Discard, nil)),
 	).Register)
+
 	request := httptest.NewRequest("POST", "/api/auth/register", bytes.NewBufferString(
 		`{"username":"rifki","email":"rifki@example.com","password":"long-password","role":"admin"}`,
 	))
 	request.Header.Set("Content-Type", "application/json")
+
 	response, err := app.Test(request)
 	if err != nil {
 		t.Fatal(err)
 	}
+
 	defer func() { _ = response.Body.Close() }()
+
 	if response.StatusCode != fiber.StatusBadRequest {
 		t.Fatalf("status = %d", response.StatusCode)
 	}
@@ -88,6 +98,7 @@ func TestRegisterRejectsUnknownJSONFields(t *testing.T) {
 
 func TestProfileValuesSupportsPartialUpdates(t *testing.T) {
 	username := "new-name"
+
 	gotUsername, gotEmail := profileValues(
 		dto.UpdateUserRequest{Username: &username},
 		&user.User{Username: "old-name", Email: "user@example.com"},

@@ -25,5 +25,6 @@ func (n *WelcomeNotifier) NotifyWelcome(ctx context.Context, account user.User) 
 		n.logger.WarnContext(ctx, "queue welcome email failed", "user_id", account.ID, "error", err)
 		return err
 	}
+
 	return nil
 }

@@ -46,6 +46,7 @@ func TestStatusUsesBackendNeutralInspector(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
+
 	if !strings.Contains(output.String(), "default\t2\t0\t0\t0\t1\t3") {
 		t.Fatalf("unexpected status output: %s", output.String())
 	}
@@ -60,6 +61,7 @@ func TestRetryUsesBackendNeutralInspector(t *testing.T) {
 	if err := command.Execute(); err != nil {
 		t.Fatal(err)
 	}
+
 	if len(inspector.retried) != 1 || inspector.retried[0] != "default:job-1" {
 		t.Fatalf("retried = %v", inspector.retried)
 	}

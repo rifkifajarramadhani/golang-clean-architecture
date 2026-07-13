@@ -51,21 +51,27 @@ func (d *Dispatcher) Dispatch(ctx context.Context, job queue.Job, options queue.
 	if options.Queue != "" {
 		asynqOptions = append(asynqOptions, asynq.Queue(options.Queue))
 	}
+
 	if !options.ProcessAt.IsZero() {
 		asynqOptions = append(asynqOptions, asynq.ProcessAt(options.ProcessAt))
 	}
+
 	if options.MaxRetry > 0 {
 		asynqOptions = append(asynqOptions, asynq.MaxRetry(options.MaxRetry))
 	}
+
 	if options.Timeout > 0 {
 		asynqOptions = append(asynqOptions, asynq.Timeout(options.Timeout))
 	}
+
 	if options.UniqueFor > 0 {
 		asynqOptions = append(asynqOptions, asynq.Unique(options.UniqueFor))
 	}
+
 	if options.Retention > 0 {
 		asynqOptions = append(asynqOptions, asynq.Retention(options.Retention))
 	}
+
 	if options.TaskID != "" {
 		asynqOptions = append(asynqOptions, asynq.TaskID(options.TaskID))
 	}
@@ -74,9 +80,11 @@ func (d *Dispatcher) Dispatch(ctx context.Context, job queue.Job, options queue.
 	if errors.Is(err, asynq.ErrDuplicateTask) || errors.Is(err, asynq.ErrTaskIDConflict) {
 		return nil, queue.ErrDuplicateJob
 	}
+
 	if err != nil {
 		return nil, err
 	}
+
 	return &queue.JobInfo{ID: info.ID, Queue: info.Queue}, nil
 }
 
@@ -87,12 +95,15 @@ func NewServer(redisOptions asynq.RedisClientOpt, cfg config.QueueConfig, regist
 		ShutdownTimeout: time.Duration(cfg.ShutdownSeconds) * time.Second,
 	})
 	mux := asynq.NewServeMux()
+
 	for jobType, handler := range registry.Handlers() {
 		handler := handler
+
 		mux.HandleFunc(jobType, func(ctx context.Context, task *asynq.Task) error {
 			return handler(ctx, json.RawMessage(task.Payload()))
 		})
 	}
+
 	return server, mux
 }
 
@@ -105,8 +116,10 @@ func (w *RedisWorker) Run(ctx context.Context) error {
 	if err := w.server.Start(w.mux); err != nil {
 		return err
 	}
+
 	<-ctx.Done()
 	w.server.Shutdown()
+
 	return nil
 }
 
@@ -127,6 +140,7 @@ func (i *RedisInspector) Stats(_ context.Context, queueName string) (queue.Queue
 	if err != nil {
 		return queue.QueueStats{}, err
 	}
+
 	return queue.QueueStats{
 		Pending:   int64(info.Pending),
 		Active:    int64(info.Active),
@@ -142,6 +156,7 @@ func (i *RedisInspector) Failed(_ context.Context, queueName string, limit int) 
 	if err != nil {
 		return nil, err
 	}
+
 	failed := make([]queue.FailedJob, 0, len(tasks))
 	for _, task := range tasks {
 		failed = append(failed, queue.FailedJob{
@@ -154,6 +169,7 @@ func (i *RedisInspector) Failed(_ context.Context, queueName string, limit int) 
 			LastError:    task.LastErr,
 		})
 	}
+
 	return failed, nil
 }
 
@@ -161,6 +177,7 @@ func (i *RedisInspector) Retry(_ context.Context, queueName, id string) (int, er
 	if id == "all" {
 		return i.inspector.RunAllArchivedTasks(queueName)
 	}
+
 	return 1, i.inspector.RunTask(queueName, id)
 }
 
@@ -168,5 +185,6 @@ func (i *RedisInspector) Delete(_ context.Context, queueName, id string) (int, e
 	if id == "all" {
 		return i.inspector.DeleteAllArchivedTasks(queueName)
 	}
+
 	return 1, i.inspector.DeleteTask(queueName, id)
 }
