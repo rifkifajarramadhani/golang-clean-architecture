@@ -23,7 +23,7 @@ type HTTPServices struct {
 }
 
 func WireHTTPServices(cfg *config.Config, db *gorm.DB, logger *slog.Logger, dispatcher queue.Dispatcher) HTTPServices {
-	repository := mysqlRepository(db)
+	repository := identityRepository(db)
 	hasher := password.Bcrypt{}
 	users := user.NewService(repository, hasher)
 	tokens := jwt.NewService(

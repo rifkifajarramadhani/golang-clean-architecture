@@ -3,12 +3,13 @@ export
 
 DATABASE_USER ?= root
 DATABASE_NAME ?= db_name
+TEMPLATE_VERSION ?= 0.1.0
 export MYSQL_URL ?= mysql://$(DATABASE_USER):$(DATABASE_PASSWORD)@tcp(db:3306)/$(DATABASE_NAME)
 
 MIGRATIONS := internal/adapter/mysql/migrations
 
 .PHONY: build run-server run-worker run-scheduler run-all queue schedule migrate-create migrate \
-	fmt fmt-check vet lint test test-race test-integration vuln check
+	fmt fmt-check vet lint test test-race test-integration vuln check template-pack
 
 build:
 	go build ./cmd/app
@@ -65,3 +66,11 @@ vuln:
 	govulncheck ./...
 
 check: fmt-check vet lint test test-race
+
+template-pack:
+	mkdir -p dist
+	tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
+		--exclude=.git --exclude=.env --exclude=dist --exclude=logs \
+		-czf dist/golang-clean-architecture-template-$(TEMPLATE_VERSION).tar.gz .
+	cd dist && sha256sum golang-clean-architecture-template-$(TEMPLATE_VERSION).tar.gz > \
+		golang-clean-architecture-template-$(TEMPLATE_VERSION).tar.gz.sha256

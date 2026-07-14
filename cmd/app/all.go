@@ -7,8 +7,8 @@ import (
 	"sync"
 	"syscall"
 
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/database"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/logging"
-	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
 	"github.com/spf13/cobra"
@@ -34,13 +34,13 @@ func allCommand() *cobra.Command {
 
 			defer func() { _ = logger.Close() }()
 
-			db, err := mysqladapter.Open(ctx, cfg.Database.DSN, logger.Logger)
+			db, err := database.Open(ctx, cfg.Database, logger.Logger)
 			if err != nil {
 				logger.ErrorContext(ctx, "connect to database failed", "error", err)
 				return fmt.Errorf("connect to database: %w", err)
 			}
 
-			defer func() { _ = mysqladapter.Close(db) }()
+			defer func() { _ = database.Close(db) }()
 
 			dispatcher, err := bootstrap.Dispatcher(cfg, db)
 			if err != nil {

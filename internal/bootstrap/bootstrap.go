@@ -56,7 +56,7 @@ func Worker(cfg *config.Config, db *gorm.DB, logger *slog.Logger) (queue.Worker,
 		return nil, fmt.Errorf("database connection is required by worker job handlers")
 	}
 
-	repository := mysqlRepository(db)
+	repository := identityRepository(db)
 	maintenance := auth.NewMaintenanceService(repository)
 
 	mailTransport, err := smtp.NewTransport(cfg.Mail)

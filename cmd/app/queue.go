@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"log/slog"
 
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/database"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/jobs"
-	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
@@ -182,7 +182,7 @@ func dispatchDemoCommand() *cobra.Command {
 			}
 
 			if db != nil {
-				defer func() { _ = mysqladapter.Close(db) }()
+				defer func() { _ = database.Close(db) }()
 			}
 
 			dispatcher, err := bootstrap.Dispatcher(cfg, db)
@@ -222,7 +222,7 @@ func newInspector() (queue.Inspector, error) {
 
 	inspector, err := bootstrap.Inspector(cfg, db)
 	if err != nil {
-		_ = mysqladapter.Close(db)
+		_ = database.Close(db)
 		return nil, err
 	}
 
@@ -239,7 +239,7 @@ func (i *managedInspector) Close() error {
 		return err
 	}
 
-	return mysqladapter.Close(i.db)
+	return database.Close(i.db)
 }
 
 func openQueueDB(ctx context.Context, cfg *config.Config) (*gorm.DB, error) {
@@ -247,5 +247,5 @@ func openQueueDB(ctx context.Context, cfg *config.Config) (*gorm.DB, error) {
 		return nil, nil
 	}
 
-	return mysqladapter.Open(ctx, cfg.Database.DSN, slog.Default())
+	return database.Open(ctx, cfg.Database, slog.Default())
 }

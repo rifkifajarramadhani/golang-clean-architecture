@@ -6,7 +6,7 @@ import (
 	"log/slog"
 	"time"
 
-	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/database"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/scheduler"
@@ -66,11 +66,11 @@ func scheduleCommand() *cobra.Command {
 
 				var db *gorm.DB
 				if cfg.Queue.Driver == config.QueueDriverDatabase {
-					db, err = mysqladapter.Open(cmd.Context(), cfg.Database.DSN, slog.Default())
+					db, err = database.Open(cmd.Context(), cfg.Database, slog.Default())
 					if err != nil {
 						return err
 					}
-					defer func() { _ = mysqladapter.Close(db) }()
+					defer func() { _ = database.Close(db) }()
 				}
 
 				dispatcher, err := bootstrap.Dispatcher(cfg, db)

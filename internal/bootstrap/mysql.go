@@ -5,6 +5,6 @@ import (
 	"gorm.io/gorm"
 )
 
-func mysqlRepository(db *gorm.DB) *identity.UserRepository {
+func identityRepository(db *gorm.DB) *identity.UserRepository {
 	return identity.NewUserRepository(db)
 }

@@ -12,7 +12,6 @@ import (
 	"sync"
 	"time"
 
-	mysqlDriver "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	appclock "github.com/rifkifajarramadhani/golang-clean-architecture/internal/clock"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
@@ -249,45 +248,10 @@ func (w *DatabaseWorker) runLoop(ctx context.Context, offset int) {
 }
 
 func (w *DatabaseWorker) reserve(ctx context.Context, queueName string) (*databaseJob, error) {
-	var job databaseJob
-
 	now := w.clock.Now()
 	w.maybeCleanup(ctx, now)
 
-	err := w.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
-		err := tx.Clauses(clause.Locking{Strength: "UPDATE", Options: "SKIP LOCKED"}).
-			Where("queue = ? AND ((status IN ? AND available_at <= ?) OR (status = ? AND leased_until <= ?))",
-				queueName, []string{jobStatusPending, jobStatusRetry}, now, jobStatusActive, now).
-			Order("available_at ASC, created_at ASC").
-			First(&job).Error
-		if err != nil {
-			return err
-		}
-
-		token := uuid.NewString()
-
-		leasedUntil := now.Add(w.reservation)
-		if err := tx.Model(&databaseJob{}).Where("id = ?", job.ID).Updates(map[string]any{
-			"status":       jobStatusActive,
-			"attempts":     gorm.Expr("attempts + 1"),
-			"lease_token":  token,
-			"leased_until": leasedUntil,
-		}).Error; err != nil {
-			return err
-		}
-
-		job.Status = jobStatusActive
-		job.Attempts++
-		job.LeaseToken = &token
-		job.LeasedUntil = &leasedUntil
-
-		return nil
-	})
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return nil, nil
-	}
-
-	return &job, err
+	return reserveDatabaseJob(ctx, w.db, queueName, now, w.reservation)
 }
 
 func (w *DatabaseWorker) process(workerCtx context.Context, job *databaseJob) {
@@ -397,9 +361,17 @@ func (w *DatabaseWorker) complete(job *databaseJob) error {
 
 		return tx.Clauses(clause.OnConflict{
 			Columns:   []clause.Column{{Name: "queue"}},
-			DoUpdates: clause.Assignments(map[string]any{"processed_total": gorm.Expr("processed_total + 1")}),
+			DoUpdates: clause.Assignments(map[string]any{"processed_total": processedTotalIncrement(tx)}),
 		}).Create(&databaseStat{Queue: job.Queue, ProcessedTotal: 1}).Error
 	})
+}
+
+func processedTotalIncrement(db *gorm.DB) clause.Expr {
+	if db.Name() == "postgres" {
+		return gorm.Expr("queue_stats.processed_total + 1")
+	}
+
+	return gorm.Expr("processed_total + 1")
 }
 
 // maybeCleanup throttles cleanup to once per cleanupInterval across all worker
@@ -524,11 +496,11 @@ func (i *DatabaseInspector) Stats(ctx context.Context, queueName string) (queue.
 	}
 
 	err := i.db.WithContext(ctx).Model(&databaseJob{}).
-		Select(`COALESCE(SUM(status = ? AND available_at <= ?), 0) AS pending,
-			COALESCE(SUM(status = ?), 0) AS active,
-			COALESCE(SUM(status = ? AND available_at > ?), 0) AS scheduled,
-			COALESCE(SUM(status = ?), 0) AS retry,
-			COALESCE(SUM(status = ?), 0) AS failed`,
+		Select(`COALESCE(SUM(CASE WHEN status = ? AND available_at <= ? THEN 1 ELSE 0 END), 0) AS pending,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS active,
+			COALESCE(SUM(CASE WHEN status = ? AND available_at > ? THEN 1 ELSE 0 END), 0) AS scheduled,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS retry,
+			COALESCE(SUM(CASE WHEN status = ? THEN 1 ELSE 0 END), 0) AS failed`,
 			jobStatusPending, now, jobStatusActive, jobStatusPending, now, jobStatusRetry, jobStatusFailed).
 		Where("queue = ?", queueName).Scan(&counts).Error
 	if err != nil {
@@ -690,6 +662,5 @@ func retryDelay(attempt int) time.Duration {
 }
 
 func isDuplicateKey(err error) bool {
-	var mysqlErr *mysqlDriver.MySQLError
-	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
+	return errors.Is(err, gorm.ErrDuplicatedKey)
 }

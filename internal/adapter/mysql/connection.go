@@ -20,7 +20,7 @@ func Open(ctx context.Context, dsn string, logger *slog.Logger) (*gorm.DB, error
 	var lastErr error
 
 	for attempt := 1; attempt <= connectionAttempts; attempt++ {
-		db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{})
+		db, err := gorm.Open(mysql.Open(dsn), &gorm.Config{TranslateError: true})
 		if err == nil {
 			sqlDB, sqlErr := db.DB()
 			if sqlErr == nil {

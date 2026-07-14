@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "template_version": "0.1.0",
+  "defaults": {
+    "framework": "fiber",
+    "database": "mysql",
+    "queue": "database",
+    "scheduler": false
+  },
+  "frameworks": ["nethttp", "fiber", "gin", "echo"],
+  "databases": ["mysql", "postgres", "sqlite"],
+  "queues": ["none", "database", "redis"]
+}

@@ -1,13 +1,27 @@
 # Golang Clean Architecture
 
-Backend services boilerplate using Clean Architecture principles with independently deployable HTTP, queue worker, and scheduler processes.
+Backend services starter using Clean Architecture principles with independently deployable HTTP, queue worker, and scheduler processes. This repository remains the runnable Fiber/MySQL/database-queue default and is also the versioned template source for [`go-craft`](https://github.com/rifkifajarramadhani/go-craft).
+
+## Generate a Selected Stack
+
+Use `go-craft` when starting a project that should contain only the selected adapters:
+
+```bash
+go-craft new my-service \
+  --framework=gin \
+  --database=postgres \
+  --queue=redis \
+  --scheduler
+```
+
+HTTP choices are `nethttp`, `fiber`, `gin`, and `echo`; databases are `mysql`, `postgres`, and `sqlite`; queues are `none`, `database`, and `redis`. The embedded template is imported by checksum and project creation does not download templates.
 
 ## Tech Stack
 
 - **Language:** Go 1.26
 - **HTTP Framework:** Fiber v3
 - **Database:** MySQL 8 (Docker)
-- **Queue:** Configurable MySQL or Redis + Asynq
+- **Queue:** MySQL database queue by default; Redis + Asynq is also supported
 - **Scheduler:** Application-defined cron schedules
 - **Mail:** Laravel-inspired mailables with SMTP and queued delivery
 - **ORM:** GORM
@@ -21,11 +35,7 @@ Backend services boilerplate using Clean Architecture principles with independen
 ```text
 .
 ├── cmd/
-│   ├── server/                 # API entrypoint
-│   ├── worker/                 # Queue worker service
-│   ├── scheduler/              # Long-running scheduler service
-│   ├── queue/                  # Queue operations CLI
-│   └── schedule/               # Schedule operations CLI
+│   └── app/                    # serve, worker, scheduler, all, queue, and schedule commands
 ├── configs/
 │   └── config.yaml             # App + DB config
 ├── internal/
@@ -75,14 +85,14 @@ Default values in this project:
 - Refresh token TTL: `168` hours
 - Email verification TTL: `24` hours
 - Bootstrap admin email: unset; configure `AUTH_BOOTSTRAP_ADMIN_EMAIL`
-- Queue driver: `redis`
+- Queue driver: `database`
 - SMTP host: `mailpit:1025`
 - Default sender: `Golang Clean Architecture <hello@example.com>`
 - Database queue poll interval: `500` milliseconds
 - Database queue reservation lease: `60` seconds
 
-Redis is the default queue backend. The database queue remains available with
-`QUEUE_DRIVER=database`.
+The database queue is the default backend. Redis remains available with
+`QUEUE_DRIVER=redis`.
 
 ## Quick Start (Recommended: Docker)
 
@@ -98,7 +108,7 @@ This starts:
 - `worker` (configured queue worker with Air hot reload)
 - `scheduler` (long-running application scheduler)
 - `db` (MySQL)
-- `redis` (default queue backend)
+- `redis` (optional queue backend)
 - `mailpit` (local SMTP server and message inspector)
 
 Compose uses the Dockerfile's `development` target. A minimal, non-root
@@ -212,18 +222,18 @@ weights and concurrency use the same configuration for both drivers.
 
 ### Queue Backend Configuration
 
-Docker Compose starts Redis and selects it as the queue driver by default:
+Docker Compose starts Redis, while the database queue remains selected by default:
 
 ```bash
 docker compose up -d --build
 REDIS_ADDRESS=localhost:6379 make queue args=status
 ```
 
-When running commands outside Compose, ensure `REDIS_ADDRESS` points to the
-Redis instance. Switching queue drivers does not transfer jobs already stored
-by the previous backend.
+To select Redis, set `QUEUE_DRIVER=redis`; when running commands outside Compose,
+ensure `REDIS_ADDRESS` points to the Redis instance. Switching queue drivers does
+not transfer jobs already stored by the previous backend.
 
-To use the database-backed queue instead:
+To explicitly select the database-backed queue:
 
 ```bash
 QUEUE_DRIVER=database docker compose up -d --build

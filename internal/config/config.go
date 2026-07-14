@@ -8,14 +8,13 @@ import (
 	"os"
 	"strconv"
 	"strings"
-	"time"
 
-	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
 )
 
 const (
+	QueueDriverNone     = "none"
 	QueueDriverDatabase = "database"
 	QueueDriverRedis    = "redis"
 
@@ -146,17 +145,6 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	dsn := mysqldriver.NewConfig()
-	dsn.User = config.Database.User
-	dsn.Passwd = config.Database.Password
-	dsn.Net = "tcp"
-	dsn.Addr = config.Database.Host + ":" + strconv.Itoa(config.Database.Port)
-	dsn.DBName = config.Database.Name
-	dsn.ParseTime = true
-	dsn.Collation = "utf8mb4_unicode_ci"
-	dsn.Loc = time.UTC
-	config.Database.DSN = dsn.FormatDSN()
-
 	return &config, nil
 }
 
@@ -195,11 +183,13 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("DATABASE_PASSWORD is required in production")
 	}
 
-	if _, _, err := net.SplitHostPort(config.Redis.Address); err != nil {
-		return fmt.Errorf("redis address must be host:port")
+	if config.Queue.Driver == QueueDriverRedis {
+		if _, _, err := net.SplitHostPort(config.Redis.Address); err != nil {
+			return fmt.Errorf("redis address must be host:port")
+		}
 	}
 
-	if len(config.Queue.Queues) == 0 {
+	if config.Queue.Driver != QueueDriverNone && len(config.Queue.Queues) == 0 {
 		return fmt.Errorf("at least one queue must be configured")
 	}
 
@@ -334,7 +324,7 @@ func normalizeQueueConfig(queue *QueueConfig) error {
 		queue.Driver = QueueDriverRedis
 	}
 
-	if queue.Driver != QueueDriverDatabase && queue.Driver != QueueDriverRedis {
+	if queue.Driver != QueueDriverNone && queue.Driver != QueueDriverDatabase && queue.Driver != QueueDriverRedis {
 		return fmt.Errorf("unsupported queue driver %q", queue.Driver)
 	}
 
