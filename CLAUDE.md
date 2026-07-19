@@ -18,10 +18,10 @@ Detailed agent guidance already lives in these files — read them, don't duplic
 ## Commands
 
 ```bash
-make build              # build all binaries (server, worker, scheduler, queue, schedule)
-make run-server          # go run ./cmd/server
-make run-worker          # go run ./cmd/worker
-make run-scheduler       # go run ./cmd/scheduler
+make build              # build the single ./cmd/app binary (serve, worker, scheduler, queue, schedule subcommands)
+make run-server          # go run ./cmd/app serve
+make run-worker          # go run ./cmd/app worker
+make run-scheduler       # go run ./cmd/app scheduler
 make fmt                 # goimports + gofmt -w
 make fmt-check           # verify formatting without writing
 make vet                 # go vet ./...
@@ -61,12 +61,12 @@ Local dev stack (server + worker + scheduler + MySQL + Redis + Mailpit): `docker
 
 Domain-first Clean Architecture; dependencies point from `cmd/` and adapters inward toward core packages, never the reverse. This is enforced by `depguard` in [.golangci.yml](.golangci.yml): `internal/auth`, `internal/user`, `internal/mail`, `internal/queue`, `internal/scheduler` (the "core" packages) must not import `internal/adapter`, `internal/bootstrap`, or `internal/config`.
 
-- `cmd/<app>` (server, worker, scheduler, queue, schedule) — owns process lifecycle, creates config/logging/DB/queue resources, and wires dependencies. Kept thin.
+- `cmd/app` — a single Cobra binary whose subcommands (`serve`, `worker`, `scheduler`, `queue`, `schedule`) each own their process lifecycle, create config/logging/DB/queue resources, and wire dependencies. Each subcommand lives in its own file (`serve.go`, `worker.go`, …) and repeats a short setup preamble; heavy wiring is delegated to `internal/bootstrap`. Kept thin.
 - `internal/auth`, `internal/user` — core entities, use-case rules, and the ports (interfaces) adapters must implement. Define interfaces at the consumption site.
 - `internal/clock` — wall-clock boundary (`Clock` interface, `Real`, `Func`) so core packages take time as a dependency instead of calling `time.Now()`.
 - `internal/mail`, `internal/queue`, `internal/scheduler` — framework-neutral capabilities (mailables, job/dispatcher abstractions, cron registry) usable independently of any transport.
 - `internal/adapter/http` — Fiber handlers, DTOs, middleware, router. Translates HTTP <-> core service calls.
-- `internal/adapter/mysql`, `jwt`, `password`, `smtp`, `queue`, `cron`, `logging` — concrete implementations of core ports (GORM repositories, JWT signing, bcrypt, SMTP transport, Asynq/DB queue backends, cron parsing, slog setup).
+- `internal/adapter/mysql` (shared `Open`/`Close` + `migrations/`, with per-domain repository sub-packages such as `internal/adapter/mysql/identity`), `jwt`, `password`, `smtp`, `queue`, `cron`, `logging` — concrete implementations of core ports (GORM repositories, JWT signing, bcrypt, SMTP transport, Asynq/DB queue backends, cron parsing, slog setup). `identity.Repository` backs both the user and auth domains because registration/verification span their tables in one transaction.
 - `internal/adapter/jobs` — translates durable queue jobs into calls against core services (e.g. `jobs.RegisterHandlers`, `jobs.CleanupRefreshTokens`).
 - `internal/bootstrap` — reusable dependency-assembly functions (`WireHTTPServices`, `Dispatcher`, `Inspector`, `Worker`, `ScheduleRegistry`) shared across `cmd/*`; does not own process resources (no opening/closing DB pools itself).
 - `internal/config` — Viper-backed config loading/normalization (`configs/config.yaml` + env var overrides).

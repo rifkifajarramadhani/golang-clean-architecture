@@ -50,7 +50,7 @@ services:
       context: .
       dockerfile: Dockerfile
       target: development
-    command: go run ./cmd/scheduler
+    command: go run ./cmd/app scheduler
     volumes:
       - .:/app
     env_file:

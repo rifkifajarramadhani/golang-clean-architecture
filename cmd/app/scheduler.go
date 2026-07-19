@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -14,17 +12,21 @@ import (
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/scheduler"
+	"github.com/spf13/cobra"
 	"gorm.io/gorm"
 )
 
-func main() {
-	if err := run(); err != nil {
-		log.Printf("scheduler failed: %v", err)
-		os.Exit(1)
+func schedulerCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "scheduler",
+		Short: "Run the long-running cron scheduler",
+		RunE: func(*cobra.Command, []string) error {
+			return runScheduler()
+		},
 	}
 }
 
-func run() error {
+func runScheduler() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	cfg, err := config.Load()

@@ -245,16 +245,16 @@ The default schedule queues refresh-token cleanup daily at midnight UTC. Determi
 
 ## Service Processes
 
-Build or run each process independently:
+All roles ship in one binary (`./cmd/app`) as subcommands. Build once and run each role independently:
 
 ```bash
-make build
-make run-server
-make run-worker
-make run-scheduler
+make build              # builds the single ./cmd/app binary
+make run-server         # ./cmd/app serve
+make run-worker         # ./cmd/app worker
+make run-scheduler      # ./cmd/app scheduler
 ```
 
-In production, supervise `cmd/server`, `cmd/worker`, and `cmd/scheduler` as separate services.
+In production, supervise `app serve`, `app worker`, and `app scheduler` as separate services from the same image.
 
 ## Mail
 
@@ -342,7 +342,7 @@ curl http://localhost:8080/api/auth/me \
 
 - API runs via Air using `.air.toml`.
 - Worker runs via Air using `.air.worker.toml`.
-- Build target for Air is `./cmd/server` and binary output is `tmp/main`.
+- Build target for Air is `./cmd/app` (run with the `serve`/`worker` subcommand) and binary output is `tmp/main`.
 - Configuration supports environment-variable overrides such as `DATABASE_HOST`, `DATABASE_PASSWORD`, `AUTH_JWT_ACCESS_SECRET`, `AUTH_JWT_REFRESH_SECRET`, `QUEUE_DRIVER`, `REDIS_ADDRESS`, and `MAIL_PASSWORD`.
 - Password hashing and current-password checks are handled in the core service.
 - Refresh tokens are persisted as SHA-256 hashes in `refresh_tokens` table.
@@ -373,8 +373,8 @@ make migrate args=up
 
 Ensure `.air.toml` has:
 
-- `cmd = "go build -o ./tmp/main ./cmd/server"`
-- `entrypoint = ["./tmp/main"]`
+- `cmd = "go build -o ./tmp/main ./cmd/app"`
+- `entrypoint = ["./tmp/main", "serve"]`
 
 Then restart the server:
 

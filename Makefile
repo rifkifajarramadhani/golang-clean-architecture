@@ -11,22 +11,22 @@ MIGRATIONS := internal/adapter/mysql/migrations
 	fmt fmt-check vet lint test test-race test-integration vuln check
 
 build:
-	go build ./cmd/server ./cmd/worker ./cmd/scheduler ./cmd/queue ./cmd/schedule
+	go build ./cmd/app
 
 run-server:
-	go run ./cmd/server
+	go run ./cmd/app serve
 
 run-worker:
-	go run ./cmd/worker
+	go run ./cmd/app worker
 
 run-scheduler:
-	go run ./cmd/scheduler
+	go run ./cmd/app scheduler
 
 queue:
-	go run ./cmd/queue $(args)
+	go run ./cmd/app queue $(args)
 
 schedule:
-	go run ./cmd/schedule $(args)
+	go run ./cmd/app schedule $(args)
 
 migrate-create:
 	docker compose exec server migrate create -ext sql -dir $(MIGRATIONS) -seq $(name)
@@ -56,7 +56,7 @@ test-race:
 
 test-integration:
 	QUEUE_TEST_MYSQL_DSN="$${QUEUE_TEST_MYSQL_DSN}" go test ./internal/adapter/queue -run DatabaseQueue
-	USER_TEST_MYSQL_DSN="$${USER_TEST_MYSQL_DSN}" go test ./internal/adapter/mysql -run UserSecurity
+	USER_TEST_MYSQL_DSN="$${USER_TEST_MYSQL_DSN}" go test ./internal/adapter/mysql/identity -run UserSecurity
 
 vuln:
 	govulncheck ./...

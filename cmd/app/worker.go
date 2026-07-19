@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
-	"os"
 	"os/signal"
 	"syscall"
 
@@ -12,16 +10,20 @@ import (
 	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
+	"github.com/spf13/cobra"
 )
 
-func main() {
-	if err := run(); err != nil {
-		log.Printf("worker failed: %v", err)
-		os.Exit(1)
+func workerCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "worker",
+		Short: "Run the queue worker",
+		RunE: func(*cobra.Command, []string) error {
+			return runWorker()
+		},
 	}
 }
 
-func run() error {
+func runWorker() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	cfg, err := config.Load()

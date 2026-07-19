@@ -38,7 +38,7 @@ func (i *fakeInspector) Close() error { return nil }
 
 func TestStatusUsesBackendNeutralInspector(t *testing.T) {
 	inspector := &fakeInspector{}
-	command := newRootCommandWithInspector(func() (queue.Inspector, error) { return inspector, nil })
+	command := queueCommandWithInspector(func() (queue.Inspector, error) { return inspector, nil })
 	output := &bytes.Buffer{}
 	command.SetOut(output)
 	command.SetArgs([]string{"status"})
@@ -53,7 +53,7 @@ func TestStatusUsesBackendNeutralInspector(t *testing.T) {
 
 func TestRetryUsesBackendNeutralInspector(t *testing.T) {
 	inspector := &fakeInspector{}
-	command := newRootCommandWithInspector(func() (queue.Inspector, error) { return inspector, nil })
+	command := queueCommandWithInspector(func() (queue.Inspector, error) { return inspector, nil })
 	command.SetOut(&bytes.Buffer{})
 	command.SetArgs([]string{"retry", "job-1", "--queue=default"})
 

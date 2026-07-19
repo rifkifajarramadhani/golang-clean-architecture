@@ -3,8 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log/slog"
-	"os"
 
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/jobs"
 	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
@@ -15,19 +13,13 @@ import (
 	"gorm.io/gorm"
 )
 
-func main() {
-	if err := newRootCommand().Execute(); err != nil {
-		os.Exit(1)
-	}
-}
-
-func newRootCommand() *cobra.Command {
-	return newRootCommandWithInspector(newInspector)
+func queueCommand() *cobra.Command {
+	return queueCommandWithInspector(newInspector)
 }
 
 type inspectorFactory func() (queue.Inspector, error)
 
-func newRootCommandWithInspector(factory inspectorFactory) *cobra.Command {
+func queueCommandWithInspector(factory inspectorFactory) *cobra.Command {
 	root := &cobra.Command{Use: "queue", Short: "Inspect and operate application queues", SilenceUsage: true}
 	root.AddCommand(statusCommand(factory), failedCommand(factory), retryCommand(factory), deleteCommand(factory), dispatchDemoCommand())
 	return root
@@ -161,7 +153,7 @@ func dispatchDemoCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			db, err := openQueueDB(cmd.Context(), cfg)
+			db, err := openCLIDatabase(cmd.Context(), cfg)
 			if err != nil {
 				return err
 			}
@@ -192,7 +184,7 @@ func newInspector() (queue.Inspector, error) {
 	if err != nil {
 		return nil, err
 	}
-	db, err := openQueueDB(context.Background(), cfg)
+	db, err := openCLIDatabase(context.Background(), cfg)
 	if err != nil {
 		return nil, err
 	}
@@ -214,11 +206,4 @@ func (i *managedInspector) Close() error {
 		return err
 	}
 	return mysqladapter.Close(i.db)
-}
-
-func openQueueDB(ctx context.Context, cfg *config.Config) (*gorm.DB, error) {
-	if cfg.Queue.Driver != config.QueueDriverDatabase {
-		return nil, nil
-	}
-	return mysqladapter.Open(ctx, cfg.Database.DSN, slog.Default())
 }

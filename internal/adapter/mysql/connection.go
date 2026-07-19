@@ -2,7 +2,6 @@ package mysqladapter
 
 import (
 	"context"
-	"errors"
 	"fmt"
 	"log/slog"
 	"time"
@@ -60,12 +59,3 @@ func Close(db *gorm.DB) error {
 	}
 	return sqlDB.Close()
 }
-
-func mapNotFound(err error) error {
-	if errors.Is(err, gorm.ErrRecordNotFound) {
-		return ErrNotFound
-	}
-	return err
-}
-
-var ErrNotFound = errors.New("record not found")

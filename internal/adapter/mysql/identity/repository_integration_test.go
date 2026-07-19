@@ -1,4 +1,4 @@
-package mysqladapter
+package identity
 
 import (
 	"context"
@@ -24,7 +24,7 @@ func TestUserSecurityTransactions(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	repo := NewUserRepository(db)
+	repo := NewRepository(db)
 	ctx := context.Background()
 	suffix := uuid.NewString()
 	t.Run("registration rolls back when verification dispatch fails", func(t *testing.T) {

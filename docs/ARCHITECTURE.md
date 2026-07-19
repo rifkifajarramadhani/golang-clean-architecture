@@ -5,12 +5,12 @@ from commands and adapters toward core capabilities.
 
 ## Package Map
 
-- `cmd/<app>` owns process lifecycle and wires dependencies.
+- `cmd/app` is a single Cobra binary; its `serve`, `worker`, `scheduler`, `queue`, and `schedule` subcommands each own their process lifecycle and wire dependencies.
 - `internal/auth` owns authentication rules, refresh tokens, and required ports.
 - `internal/user` owns the user entity, CRUD rules, and required ports.
 - `internal/mail`, `internal/queue`, and `internal/scheduler` own framework-neutral capabilities.
 - `internal/adapter/http` translates Fiber requests and responses.
-- `internal/adapter/mysql`, `jwt`, `password`, `smtp`, `queue`, and `cron` implement core ports.
+- `internal/adapter/mysql` implements persistence: shared `Open`/`Close` and `migrations/` at the root, with per-domain repository sub-packages (e.g. `internal/adapter/mysql/identity`). `jwt`, `password`, `smtp`, `queue`, and `cron` implement the remaining core ports.
 - `internal/adapter/jobs` translates durable jobs into core service calls.
 - `internal/bootstrap` assembles reusable adapter groups without owning process resources.
 - `internal/config` loads and normalizes application configuration.

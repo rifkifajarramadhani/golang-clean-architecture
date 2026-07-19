@@ -4,7 +4,7 @@ Patterns here draw from Effective Go, Uber's Go Style Guide, Go Code Review Comm
 
 ## Project & Package Layout
 
-- Use `cmd/<app>` for entrypoints that wire dependencies and parse config.
+- Use `cmd/app` subcommands (`serve`, `worker`, `scheduler`, `queue`, `schedule`) for entrypoints that wire dependencies and parse config.
 - Keep reusable code in `internal/` to prevent accidental external use; optional shared public packages can live in `pkg/`.
 - Organize packages by domain or capability (e.g., `payment`, `auth`, `httpapi`), not by technical layer alone.
 - Avoid cyclic imports; extract interfaces or helper packages when cycles appear.

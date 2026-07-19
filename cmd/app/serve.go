@@ -4,8 +4,6 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
-	"os"
 	"os/signal"
 	"syscall"
 	"time"
@@ -17,16 +15,20 @@ import (
 	mysqladapter "github.com/rifkifajarramadhani/golang-clean-architecture/internal/adapter/mysql"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/bootstrap"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
+	"github.com/spf13/cobra"
 )
 
-func main() {
-	if err := run(); err != nil {
-		log.Printf("server failed: %v", err)
-		os.Exit(1)
+func serveCommand() *cobra.Command {
+	return &cobra.Command{
+		Use:   "serve",
+		Short: "Run the HTTP API server",
+		RunE: func(*cobra.Command, []string) error {
+			return runServe()
+		},
 	}
 }
 
-func run() error {
+func runServe() error {
 	ctx, stop := signal.NotifyContext(context.Background(), syscall.SIGINT, syscall.SIGTERM)
 	defer stop()
 	cfg, err := config.Load()
