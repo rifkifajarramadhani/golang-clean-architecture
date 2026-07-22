@@ -79,6 +79,7 @@ func TestLoadUsesDotEnvAndEnvironmentPrecedence(t *testing.T) {
 		_ = os.Unsetenv(redisPasswordKey)
 	})
 	t.Setenv("DATABASE_PASSWORD", "from-environment")
+	t.Setenv("ELASTICSEARCH_URL", "https://search.example.com")
 
 	directory := t.TempDir()
 	if err := os.Mkdir(filepath.Join(directory, "configs"), 0o755); err != nil {
@@ -135,6 +136,41 @@ queue:
 
 	if cfg.Redis.Password != "redis-from-dotenv" {
 		t.Fatalf("redis password = %q, want dotenv value", cfg.Redis.Password)
+	}
+
+	if cfg.Elasticsearch.URL != "https://search.example.com" {
+		t.Fatalf("elasticsearch URL = %q, want environment value", cfg.Elasticsearch.URL)
+	}
+}
+
+func TestValidateElasticsearchConfig(t *testing.T) {
+	tests := []struct {
+		name    string
+		config  ElasticsearchConfig
+		wantErr bool
+	}{
+		{name: "empty"},
+		{name: "http", config: ElasticsearchConfig{URL: "http://elasticsearch:9200"}},
+		{
+			name: "https with basic auth",
+			config: ElasticsearchConfig{
+				URL: "https://search.example.com", Username: "elastic", Password: "secret",
+			},
+		},
+		{name: "missing URL", config: ElasticsearchConfig{Username: "elastic", Password: "secret"}, wantErr: true},
+		{name: "relative URL", config: ElasticsearchConfig{URL: "elasticsearch:9200"}, wantErr: true},
+		{name: "unsupported scheme", config: ElasticsearchConfig{URL: "tcp://elasticsearch:9200"}, wantErr: true},
+		{name: "username only", config: ElasticsearchConfig{URL: "https://search.example.com", Username: "elastic"}, wantErr: true},
+		{name: "password only", config: ElasticsearchConfig{URL: "https://search.example.com", Password: "secret"}, wantErr: true},
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			err := validateElasticsearchConfig(test.config)
+			if (err != nil) != test.wantErr {
+				t.Fatalf("validateElasticsearchConfig() error = %v, wantErr %t", err, test.wantErr)
+			}
+		})
 	}
 }
 

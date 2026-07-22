@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net"
 	stdmail "net/mail"
+	"net/url"
 	"os"
 	"strconv"
 	"strings"
@@ -54,6 +55,12 @@ type RedisConfig struct {
 	DB       int    `mapstructure:"db"`
 }
 
+type ElasticsearchConfig struct {
+	URL      string `mapstructure:"url"`
+	Username string `mapstructure:"username"`
+	Password string `mapstructure:"password"`
+}
+
 type QueueConfig struct {
 	Driver          string              `mapstructure:"driver"`
 	Concurrency     int                 `mapstructure:"concurrency"`
@@ -87,14 +94,15 @@ type LoggingConfig struct {
 }
 
 type Config struct {
-	App       AppConfig       `mapstructure:"app"`
-	Database  DatabaseConfig  `mapstructure:"database"`
-	Auth      AuthConfig      `mapstructure:"auth"`
-	Redis     RedisConfig     `mapstructure:"redis"`
-	Queue     QueueConfig     `mapstructure:"queue"`
-	Scheduler SchedulerConfig `mapstructure:"scheduler"`
-	Mail      MailConfig      `mapstructure:"mail"`
-	Logging   LoggingConfig   `mapstructure:"logging"`
+	App           AppConfig           `mapstructure:"app"`
+	Database      DatabaseConfig      `mapstructure:"database"`
+	Auth          AuthConfig          `mapstructure:"auth"`
+	Redis         RedisConfig         `mapstructure:"redis"`
+	Elasticsearch ElasticsearchConfig `mapstructure:"elasticsearch"`
+	Queue         QueueConfig         `mapstructure:"queue"`
+	Scheduler     SchedulerConfig     `mapstructure:"scheduler"`
+	Mail          MailConfig          `mapstructure:"mail"`
+	Logging       LoggingConfig       `mapstructure:"logging"`
 }
 
 func Load() (*Config, error) {
@@ -139,6 +147,7 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	normalizeElasticsearchConfig(&config.Elasticsearch)
 	normalizeLoggingConfig(&config.Logging)
 
 	if err := validateConfig(&config); err != nil {
@@ -162,6 +171,7 @@ var configKeys = []string{
 	"auth.jwt_access_secret", "auth.jwt_refresh_secret", "auth.access_ttl_minutes", "auth.refresh_ttl_hours",
 	"auth.issuer", "auth.audience", "auth.verification_ttl_hours", "auth.bootstrap_admin_email",
 	"redis.address", "redis.password", "redis.db",
+	"elasticsearch.url", "elasticsearch.username", "elasticsearch.password",
 	"queue.driver", "queue.concurrency", "queue.shutdown_seconds", "queue.queues",
 	"queue.database.poll_interval_milliseconds", "queue.database.reservation_seconds",
 	"scheduler.timezone", "mail.host", "mail.port", "mail.username", "mail.password", "mail.encryption",
@@ -183,6 +193,10 @@ func validateConfig(config *Config) error {
 		return fmt.Errorf("DATABASE_PASSWORD is required in production")
 	}
 
+	if err := validateElasticsearchConfig(config.Elasticsearch); err != nil {
+		return err
+	}
+
 	if config.Queue.Driver == QueueDriverRedis {
 		if _, _, err := net.SplitHostPort(config.Redis.Address); err != nil {
 			return fmt.Errorf("redis address must be host:port")
@@ -197,6 +211,29 @@ func validateConfig(config *Config) error {
 		if strings.TrimSpace(name) == "" || weight <= 0 {
 			return fmt.Errorf("queue names must be non-empty and weights must be positive")
 		}
+	}
+
+	return nil
+}
+
+func normalizeElasticsearchConfig(config *ElasticsearchConfig) {
+	config.URL = strings.TrimSpace(config.URL)
+	config.Username = strings.TrimSpace(config.Username)
+}
+
+func validateElasticsearchConfig(config ElasticsearchConfig) error {
+	configured := config.URL != "" || config.Username != "" || config.Password != ""
+	if !configured {
+		return nil
+	}
+
+	parsed, err := url.Parse(config.URL)
+	if err != nil || parsed.Host == "" || (parsed.Scheme != "http" && parsed.Scheme != "https") {
+		return fmt.Errorf("elasticsearch URL must be a valid HTTP or HTTPS URL")
+	}
+
+	if (config.Username == "") != (config.Password == "") {
+		return fmt.Errorf("elasticsearch username and password must be configured together")
 	}
 
 	return nil

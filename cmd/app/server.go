@@ -17,6 +17,11 @@ import (
 )
 
 func runServer(ctx context.Context, cfg *config.Config, logger *logging.Logger, db *gorm.DB, dispatcher queue.Dispatcher) error {
+	searchReady, err := openSearch(ctx, cfg)
+	if err != nil {
+		return fmt.Errorf("connect to search adapter: %w", err)
+	}
+
 	services := bootstrap.WireHTTPServices(cfg, db, logger.Logger, dispatcher)
 	app := fiber.New(fiber.Config{
 		BodyLimit: 64 * 1024, ReadTimeout: 10 * time.Second, WriteTimeout: 15 * time.Second, IdleTimeout: 60 * time.Second,
@@ -35,8 +40,11 @@ func runServer(ctx context.Context, cfg *config.Config, logger *logging.Logger, 
 	router.Setup(app, services.Users, services.Auth, services.Tokens, logger.Logger)
 	app.Get("/health/live", func(c fiber.Ctx) error { return c.JSON(fiber.Map{"status": "ok"}) })
 	app.Get("/health/ready", func(c fiber.Ctx) error {
+		readyCtx, cancel := context.WithTimeout(c.Context(), 2*time.Second)
+		defer cancel()
+
 		sqlDB, dbErr := db.DB()
-		if dbErr != nil || sqlDB.PingContext(c.Context()) != nil {
+		if dbErr != nil || sqlDB.PingContext(readyCtx) != nil || searchReady(readyCtx) != nil {
 			return c.Status(fiber.StatusServiceUnavailable).JSON(fiber.Map{"status": "unavailable"})
 		}
 
