@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/google/uuid"
 	appclock "github.com/rifkifajarramadhani/golang-clean-architecture/internal/clock"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/config"
@@ -220,10 +221,6 @@ func (w *DatabaseWorker) runLoop(ctx context.Context, offset int) {
 			}
 
 			emptyReserves++
-			// Only sleep once every weighted queue slot came up empty in a
-			// row; sleeping after any single empty reserve would delay ready
-			// jobs on the other queues by up to a full poll cycle. Errors
-			// always sleep to avoid hot-looping against a broken database.
 			if err == nil && emptyReserves < len(w.weightedQueues) {
 				continue
 			}
@@ -374,8 +371,6 @@ func processedTotalIncrement(db *gorm.DB) clause.Expr {
 	return gorm.Expr("processed_total + 1")
 }
 
-// maybeCleanup throttles cleanup to once per cleanupInterval across all worker
-// goroutines; running it on every reserve added three queries per poll.
 func (w *DatabaseWorker) maybeCleanup(ctx context.Context, now time.Time) {
 	w.cleanupMu.Lock()
 	if now.Before(w.nextCleanup) {
@@ -662,5 +657,11 @@ func retryDelay(attempt int) time.Duration {
 }
 
 func isDuplicateKey(err error) bool {
-	return errors.Is(err, gorm.ErrDuplicatedKey)
+	if errors.Is(err, gorm.ErrDuplicatedKey) {
+		return true
+	}
+
+	var mysqlErr *mysqldriver.MySQLError
+
+	return errors.As(err, &mysqlErr) && mysqlErr.Number == 1062
 }

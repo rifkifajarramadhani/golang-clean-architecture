@@ -6,6 +6,8 @@ This guide instructs agents how to write Go code that mirrors community best pra
 - [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) (layering and dependency rules)
 - [docs/PATTERNS.md](docs/PATTERNS.md) (common solutions and resource selection)
 - [docs/LINTING.md](docs/LINTING.md) (tooling and checks)
+- [CONTEXT.md](CONTEXT.md) (canonical project and identity language)
+- [docs/adr](docs/adr) (accepted architectural decisions)
 
 ## Operating Rules
 
@@ -13,12 +15,13 @@ This guide instructs agents how to write Go code that mirrors community best pra
 - Always format (`gofmt`/`goimports`) and lint (`go vet`, `golangci-lint`) before shipping. Run tests with `go test` and `-race` when concurrency is involved.
 - Follow vertical spacing rules in [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md#vertical-spacing--logical-blocks); `wsl_v5` enforces blank lines between logical blocks via `make lint`.
 - Keep architecture clean: business logic does not depend on frameworks, databases, or transport types. Wire dependencies at the edges.
+- Keep Go source and tests free of human-written comments. Only recognized Go directives, line directives, and the standard generated-code marker are allowed; `go test ./...` enforces this.
 - Prefer clarity over cleverness; small, focused functions; early returns on errors.
 
 ## Effective Go Essentials
 
 - **Formatting:** `gofmt` is canonical; keep imports grouped stdlib/third-party/local. Blank lines between logical steps are required—see [docs/STYLE_GUIDE.md](docs/STYLE_GUIDE.md#vertical-spacing--logical-blocks).
-- **Comments:** Full sentences starting with the name being described; explain why, not just what.
+- **Comments:** Do not add prose comments to Go files. Put rationale in context documentation, ADRs, tests, names, and focused functions.
 - **Names:** Package names are short and lower case. Avoid stutter (`bytes.Buffer`). Use common initialisms (`ID`, `HTTP`).
 - **Declarations:** Use `:=` for locals; let zero values work; composite literals with field names when many fields.
 - **Control:** Prefer `switch` over long `if/else`; range over slices/maps. Watch range variable capture when spawning goroutines.
@@ -27,7 +30,7 @@ This guide instructs agents how to write Go code that mirrors community best pra
 - **Errors:** Return errors as last value; wrap with `%w` for context; avoid panics for expected problems.
 - **Concurrency:** Share memory by communicating. Use channels for ownership transfer or signaling; use mutexes for shared state. Close channels from senders only. Tie goroutines to a lifecycle (context or done channel).
 - **Packages:** Export only what callers need; organize code so package names express the domain; avoid cyclic imports.
-- **Examples:** Prefer table-driven tests; show simple usage in Godoc examples.
+- **Examples:** Prefer table-driven tests and small executable examples.
 
 ## Uber Go Style Highlights
 
@@ -96,7 +99,8 @@ This guide instructs agents how to write Go code that mirrors community best pra
           }
       }()
   }
-  // feed jobs then close(jobs); wg.Wait()
+  close(jobs)
+  wg.Wait()
   ```
 - **Table-driven test:**
   ```go

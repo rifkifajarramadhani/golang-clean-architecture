@@ -54,8 +54,6 @@ func allCommand() *cobra.Command {
 
 			logger.Info("running all components in a single process")
 
-			// Cancel the shared context as soon as any component returns so the
-			// others shut down too, then wait for all of them.
 			ctx, cancel := context.WithCancel(ctx)
 			defer cancel()
 

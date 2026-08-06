@@ -174,14 +174,14 @@ func TestValidateElasticsearchConfig(t *testing.T) {
 	}
 }
 
-func TestNormalizeQueueConfigDefaultsToRedis(t *testing.T) {
+func TestNormalizeQueueConfigDefaultsToDatabase(t *testing.T) {
 	cfg := QueueConfig{}
 	if err := normalizeQueueConfig(&cfg); err != nil {
 		t.Fatal(err)
 	}
 
-	if cfg.Driver != QueueDriverRedis {
-		t.Fatalf("driver = %q, want %q", cfg.Driver, QueueDriverRedis)
+	if cfg.Driver != QueueDriverDatabase {
+		t.Fatalf("driver = %q, want %q", cfg.Driver, QueueDriverDatabase)
 	}
 
 	if cfg.Concurrency != 1 || cfg.ShutdownSeconds != 30 {

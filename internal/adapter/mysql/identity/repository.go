@@ -23,10 +23,6 @@ func (r *UserRepository) Create(ctx context.Context, account *user.User) error {
 	return r.createUser(ctx, account)
 }
 
-// RegisterUser runs dispatch inside the transaction so a user row never exists
-// without its verification having been queued: a dispatch failure rolls the
-// registration back. The cost is that row locks are held for the duration of
-// the dispatch call, so dispatchers must stay fast and honor ctx deadlines.
 func (r *UserRepository) RegisterUser(
 	ctx context.Context,
 	account *user.User,
@@ -189,10 +185,6 @@ func (r *UserRepository) ChangePassword(ctx context.Context, id int, hashedPassw
 	})
 }
 
-// ChangeRole re-checks the admin-actor, promote-requires-verified, and
-// last-admin invariants that user.Service already validated: the service
-// checks are advisory (fast failure, business rules in core), while these run
-// under FOR UPDATE locks and are authoritative against concurrent changes.
 func (r *UserRepository) ChangeRole(ctx context.Context, actorID, targetID int, role user.Role) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var actor, target userModel
@@ -234,8 +226,6 @@ func (r *UserRepository) ChangeRole(ctx context.Context, actorID, targetID int, 
 	})
 }
 
-// Delete re-checks the last-admin invariant under FOR UPDATE locks; see
-// ChangeRole for why the user.Service pre-check is repeated here.
 func (r *UserRepository) Delete(ctx context.Context, id int) error {
 	return r.db.WithContext(ctx).Transaction(func(tx *gorm.DB) error {
 		var target userModel

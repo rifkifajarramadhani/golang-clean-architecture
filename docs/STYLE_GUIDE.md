@@ -13,7 +13,7 @@ This guide merges the core practices from Effective Go, Uber's Go Style Guide, a
 
 - Always format with `gofmt`; never hand-tune alignment.
 - Use `goimports` to organize imports into standard library, third-party, and local groups.
-- Keep files organized: package comment at top, imports next, then declarations.
+- Keep files organized: package clause first, imports next, then declarations.
 - Avoid long lines when it hurts readability, but don't obsess over hard limits.
 - Do not leave commented-out code or unused imports.
 
@@ -41,33 +41,29 @@ if err != nil {
 }
 ```
 
-```go
-// Avoid: cuddling unrelated declarations or control flow
-if err != nil {
-    return err
-}
-var cfg Config // needs blank line above
-
-// Avoid: switch immediately after unrelated setup
-mailTransport, err := smtp.New(cfg.Mail)
-switch cfg.Driver { // needs blank line above
-```
+For example, a declaration immediately after an error block needs a blank line,
+as does a `switch` that follows unrelated setup.
 
 Run `make lint` to catch violations; `golangci-lint run --enable-only=wsl_v5 --fix ./...` can auto-fix many of them.
 
 ## Naming
 
 - Package names: short, lower-case, no underscores; name after what the package provides. Avoid stutter (`bytes.Buffer` not `bytes.ByteBuffer`).
-- Exported identifiers: use CamelCase and meaningful names; doc comments start with the identifier name.
+- Exported identifiers: use CamelCase and meaningful names.
 - Local variables: short names for short scopes (`i`, `err`); longer names for clarity when needed.
 - Constants: prefer well-scoped `const` blocks; use `iota` for enumerations.
 - Avoid abbreviations unless common (`HTTP`, `ID`); keep consistent capitalization (`userID`).
 
 ## Comments & Documentation
 
-- Write package, type, function, and method comments as full sentences; start with the name being described.
-- Favor explaining why over what; keep comments in sync with code.
-- For Godoc examples, include small compilable snippets showing typical use.
+- Go source and tests must not contain human-written comments.
+- The only allowed Go comments are recognized `//go:` directives, line
+  directives, and the standard `Code generated ... DO NOT EDIT.` marker.
+- Put rationale and architectural context in `CONTEXT.md`, ADRs, and other
+  Markdown documentation. Express local intent through names, types, small
+  functions, and behavior-focused tests.
+- The test-only comment-policy package scans the repository during `go test
+  ./...` and rejects violations.
 
 ## Declarations & Initialization
 
@@ -83,7 +79,8 @@ Run `make lint` to catch violations; `golangci-lint run --enable-only=wsl_v5 --f
   if err := do(); err != nil {
       return err
   }
-  // happy path continues
+
+  next()
   ```
 - Use `switch` over chains of `if/else` when comparing the same value or handling type assertions.
 - Prefer `for` with range for collections; remember that range copies the iteration value—take the address carefully (use index to take addresses).

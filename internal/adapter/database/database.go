@@ -1,4 +1,3 @@
-// Package database exposes the selected persistence driver to process entrypoints.
 package database
 
 import (

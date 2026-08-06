@@ -1,6 +1,6 @@
 # Golang Clean Architecture
 
-Backend services starter using Clean Architecture principles with independently deployable HTTP, queue worker, and scheduler processes. This repository remains the runnable Fiber/MySQL/database-queue default and is also the versioned template source for [`go-craft`](https://github.com/rifkifajarramadhani/go-craft).
+Backend services starter using Clean Architecture principles with independently deployable HTTP, queue worker, and scheduler processes. This repository remains the runnable Fiber/MySQL/database-queue default and is also the versioned template source for [`go-craft`](https://github.com/rifkifajarramadhani/go-craft). See [CONTEXT.md](CONTEXT.md) for the shared project and identity language, [the architecture playbook](docs/ARCHITECTURE.md), and the [architecture decisions](docs/adr/).
 
 ## Generate a Selected Stack
 
@@ -18,7 +18,7 @@ HTTP choices are `nethttp`, `fiber`, `gin`, and `echo`; databases are `mysql`, `
 
 ## Tech Stack
 
-- **Language:** Go 1.26
+- **Language:** Go 1.26.5
 - **HTTP Framework:** Fiber v3
 - **Database:** MySQL 8 (Docker)
 - **Queue:** MySQL database queue by default; Redis + Asynq is also supported
@@ -39,13 +39,14 @@ HTTP choices are `nethttp`, `fiber`, `gin`, and `echo`; databases are `mysql`, `
 ├── configs/
 │   └── config.yaml             # App + DB config
 ├── internal/
-│   ├── config/                 # Config loader
 │   ├── auth/                   # Authentication core and ports
 │   ├── user/                   # User core and ports
 │   ├── mail, queue, scheduler/ # Framework-neutral capabilities
 │   ├── adapter/                # HTTP, MySQL, JWT, SMTP, queue, cron, logging
 │   ├── bootstrap/              # Reusable dependency assembly
 │   └── config/                 # Config loader
+├── docs/adr/                    # Architecture decision records
+├── CONTEXT.md                   # Shared template and identity glossary
 ├── docker-compose.yml
 ├── Dockerfile
 ├── Makefile
@@ -91,8 +92,8 @@ Default values in this project:
 - Database queue poll interval: `500` milliseconds
 - Database queue reservation lease: `60` seconds
 
-The database queue is the default backend. Redis remains available with
-`QUEUE_DRIVER=redis`.
+The database queue is the default backend, including when `queue.driver` is
+omitted. Redis remains available with `QUEUE_DRIVER=redis`.
 
 ## Quick Start (Recommended: Docker)
 
@@ -192,7 +193,7 @@ make queue args='delete all'
 ```
 
 The worker, scheduler, schedule command, and queue command all use the configured
-`queue.driver`. Redis is the default. Database mode requires migration
+`queue.driver`. The database queue is the default. Database mode requires migration
 `000003_create_queue_tables`.
 
 ## Logging
@@ -204,6 +205,11 @@ The server exposes `GET /health/live` for process health and
 `GET /health/ready` for database readiness. Every HTTP response includes an
 `X-Request-ID`, and access logs include that identifier.
 
+Search is an optional extension point rather than part of the Runnable Default.
+`cmd/app/search.go` defines the readiness seam; a generated or customized stack
+can open its search adapter there and return a health check without making core
+packages depend on a search SDK.
+
 ## Quality Checks
 
 ```bash
@@ -211,10 +217,17 @@ make fmt
 make check
 make test-integration
 make vuln
+make template-pack
 ```
 
 GitHub Actions runs formatting/lint checks, tests, race detection, vulnerability
 scanning, MySQL queue integration tests, and the Docker build.
+
+`make template-pack` reads version `0.2.0` from `.craft/manifest.json` and writes
+a deterministic archive plus SHA-256 checksum under `dist/`. Set
+`TEMPLATE_VERSION=x.y.z` only when an explicit packaging override is required.
+Archives contain Git-tracked files exclusively, so ignored secrets, binaries,
+logs, and unrelated untracked files cannot enter a release.
 
 Database jobs support delayed processing, retries, handler timeouts, uniqueness,
 retained completed jobs, failed-job inspection, retry, and deletion. Queue
@@ -226,7 +239,7 @@ Docker Compose starts Redis, while the database queue remains selected by defaul
 
 ```bash
 docker compose up -d --build
-REDIS_ADDRESS=localhost:6379 make queue args=status
+docker compose exec server app queue status
 ```
 
 To select Redis, set `QUEUE_DRIVER=redis`; when running commands outside Compose,
@@ -296,9 +309,9 @@ to connect to the local Mailpit container.
 
 Set `APP_ENVIRONMENT=production` and configure the container platform to inject
 `DATABASE_PASSWORD`, `AUTH_JWT_ACCESS_SECRET`, `AUTH_JWT_REFRESH_SECRET`,
-`REDIS_PASSWORD`, and `MAIL_PASSWORD` from its managed secret store. Grant the
-workload access through workload identity; do not place cloud credentials or a
-secret-manager SDK in the application.
+`MAIL_PASSWORD`, and `REDIS_PASSWORD` when Redis is selected from its managed
+secret store. Grant the workload access through workload identity; do not place
+cloud credentials or a secret-manager SDK in the application.
 
 Generate independent JWT secrets with a cryptographically secure generator,
 for example `openssl rand -base64 48`. Production startup rejects missing,
@@ -353,6 +366,8 @@ curl http://localhost:8080/api/auth/me \
 
 ## Development Notes
 
+- Read [CONTEXT.md](CONTEXT.md), [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md),
+  and the [ADRs](docs/adr/) before changing shared template behavior.
 - API runs via Air using `.air.toml`.
 - Worker runs via Air using `.air.worker.toml`.
 - Build target for Air is `./cmd/app` and binary output is `tmp/main` (run with the `serve` subcommand).

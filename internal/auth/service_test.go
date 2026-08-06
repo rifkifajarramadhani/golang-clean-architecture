@@ -74,9 +74,10 @@ func (r *refreshTokenRepoFake) RotateRefreshToken(_ context.Context, _ string, t
 }
 
 type verificationRepoFake struct {
-	token  *EmailVerificationToken
-	result *EmailVerificationResult
-	err    error
+	token    *EmailVerificationToken
+	result   *EmailVerificationResult
+	err      error
+	verified bool
 }
 
 func (r *verificationRepoFake) ReplaceEmailVerificationToken(_ context.Context, token *EmailVerificationToken) error {
@@ -84,6 +85,8 @@ func (r *verificationRepoFake) ReplaceEmailVerificationToken(_ context.Context, 
 	return nil
 }
 func (r *verificationRepoFake) VerifyEmail(context.Context, string, time.Time, VerificationRolePolicy) (*EmailVerificationResult, error) {
+	r.verified = true
+
 	return r.result, r.err
 }
 func (*verificationRepoFake) CanIssueEmailVerification(context.Context, int, time.Time) (bool, error) {
@@ -116,13 +119,14 @@ type notifierFake struct {
 type welcomeNotifierFake struct {
 	called  int
 	account user.User
+	err     error
 }
 
 func (n *welcomeNotifierFake) NotifyWelcome(_ context.Context, account user.User) error {
 	n.called++
 	n.account = account
 
-	return nil
+	return n.err
 }
 
 func (n *notifierFake) NotifyVerification(_ context.Context, account user.User, token string) error {
@@ -208,13 +212,18 @@ func TestVerifyEmailSucceedsWithBestEffortWelcomeNotifier(t *testing.T) {
 	verification := &verificationRepoFake{result: &EmailVerificationResult{
 		User: &user.User{ID: 42}, FirstVerification: true,
 	}}
+	welcome := &welcomeNotifierFake{err: errors.New("queue unavailable")}
 
 	service := NewService(
 		&userStoreFake{}, &refreshTokenRepoFake{}, verification, tokenServiceFake{}, passwordFake{},
-		nil, &welcomeNotifierFake{}, time.Hour, "",
+		nil, welcome, time.Hour, "",
 	)
 	if err := service.VerifyEmail(context.Background(), "token"); err != nil {
 		t.Fatal(err)
+	}
+
+	if !verification.verified || welcome.called != 1 {
+		t.Fatalf("verified = %v, welcome calls = %d", verification.verified, welcome.called)
 	}
 }
 

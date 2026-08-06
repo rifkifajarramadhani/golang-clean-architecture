@@ -358,7 +358,7 @@ func normalizeMailConfig(mail *MailConfig) error {
 func normalizeQueueConfig(queue *QueueConfig) error {
 	queue.Driver = strings.ToLower(strings.TrimSpace(queue.Driver))
 	if queue.Driver == "" {
-		queue.Driver = QueueDriverRedis
+		queue.Driver = QueueDriverDatabase
 	}
 
 	if queue.Driver != QueueDriverNone && queue.Driver != QueueDriverDatabase && queue.Driver != QueueDriverRedis {

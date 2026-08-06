@@ -2,7 +2,6 @@ package user
 
 import "time"
 
-// Role is the set of privileges assigned to a user.
 type Role string
 
 const (
@@ -24,7 +23,6 @@ type User struct {
 func (u User) IsAdmin() bool       { return u.Role == RoleAdmin }
 func (u User) EmailVerified() bool { return u.EmailVerifiedAt != nil }
 
-// ParseRole validates and normalizes an externally supplied role.
 func ParseRole(value string) (Role, error) {
 	switch Role(value) {
 	case RoleUser:
@@ -36,11 +34,8 @@ func ParseRole(value string) (Role, error) {
 	}
 }
 
-// CanPromote reports whether the user satisfies the domain requirements for
-// receiving administrator privileges.
 func (u User) CanPromote() bool { return u.EmailVerified() }
 
-// UpdateProfile applies a validated profile transition.
 func (u *User) UpdateProfile(username, email string) error {
 	candidate := &User{Username: username, Email: email}
 	if err := NormalizeAndValidate(candidate, false); err != nil {
@@ -57,7 +52,6 @@ func (u *User) UpdateProfile(username, email string) error {
 	return nil
 }
 
-// AssignRole applies the domain checks for a role transition.
 func (u *User) AssignRole(role Role) error {
 	if role == RoleAdmin && !u.CanPromote() {
 		return ErrForbidden
@@ -68,7 +62,6 @@ func (u *User) AssignRole(role Role) error {
 	return nil
 }
 
-// VerifyEmail applies a successful email-verification transition.
 func (u *User) VerifyEmail(at time.Time) bool {
 	first := !u.EmailVerified()
 	if u.PendingEmail != "" {
@@ -82,7 +75,6 @@ func (u *User) VerifyEmail(at time.Time) bool {
 	return first
 }
 
-// ChangePasswordHash records a password credential transition.
 func (u *User) ChangePasswordHash(hash string) {
 	u.Password = hash
 	u.TokenVersion++

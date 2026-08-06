@@ -3,7 +3,7 @@ export
 
 DATABASE_USER ?= root
 DATABASE_NAME ?= db_name
-TEMPLATE_VERSION ?= 0.2.0
+DIST_DIR ?= dist
 export MYSQL_URL ?= mysql://$(DATABASE_USER):$(DATABASE_PASSWORD)@tcp(db:3306)/$(DATABASE_NAME)
 
 MIGRATIONS := internal/adapter/mysql/migrations
@@ -68,9 +68,4 @@ vuln:
 check: fmt-check vet lint test test-race
 
 template-pack:
-	mkdir -p dist
-	tar --sort=name --mtime='UTC 1970-01-01' --owner=0 --group=0 --numeric-owner \
-		--exclude=.git --exclude=.env --exclude=dist --exclude=logs \
-		-czf dist/golang-clean-architecture-template-$(TEMPLATE_VERSION).tar.gz .
-	cd dist && sha256sum golang-clean-architecture-template-$(TEMPLATE_VERSION).tar.gz > \
-		golang-clean-architecture-template-$(TEMPLATE_VERSION).tar.gz.sha256
+	go run ./internal/templatepack -output-dir "$(DIST_DIR)" $(if $(TEMPLATE_VERSION),-version "$(TEMPLATE_VERSION)")

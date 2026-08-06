@@ -64,5 +64,4 @@ func requireAffected(result *gorm.DB) error {
 	return nil
 }
 
-// ErrNotFound indicates a refresh-token row was not found.
 var ErrNotFound = errors.New("record not found")

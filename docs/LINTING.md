@@ -9,6 +9,9 @@ Use this checklist to keep Go codebases healthy. Content is drawn from Effective
 - `go vet`: Static analysis for suspicious constructs (format string mistakes, unreachable code, copylocks, etc.).
 - `golangci-lint`: Aggregates formatters and linters configured in `.golangci.yml`. Run via `make lint`.
 - `go test -race`: Detects data races; run on packages with concurrency.
+- Comment policy test: Parses repository Go files and rejects prose comments;
+  only Go directives, line directives, and the standard generated-code marker
+  are accepted.
 
 ### Formatters (golangci-lint)
 
@@ -46,6 +49,8 @@ Configured in `.golangci.yml` under `linters.enable`:
 - Struct tags: keep JSON/DB tags consistent; avoid unused tags; ensure backticks are balanced.
 - Composite literals: use field names for structs when many fields or exported fields are involved.
 - Context: place `context.Context` as the first parameter when meaningful; do not store contexts inside structs.
+- Comments: keep Go source and tests comment-free except for policy-approved
+  compiler, line, and generated-code markers.
 
 ## Suggested CI Gates
 

@@ -6,7 +6,9 @@ import (
 	"testing"
 	"time"
 
+	mysqldriver "github.com/go-sql-driver/mysql"
 	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/queue"
+	"gorm.io/gorm"
 )
 
 func TestWeightedQueueNamesAreStable(t *testing.T) {
@@ -40,6 +42,18 @@ func TestRetryDelayUsesCappedExponentialBackoff(t *testing.T) {
 
 	if got := retryDelay(100); got != time.Hour {
 		t.Fatalf("capped retry delay = %s, want 1h", got)
+	}
+}
+
+func TestIsDuplicateKeyRecognizesTranslatedAndMySQLErrors(t *testing.T) {
+	for _, err := range []error{gorm.ErrDuplicatedKey, &mysqldriver.MySQLError{Number: 1062}} {
+		if !isDuplicateKey(err) {
+			t.Fatalf("isDuplicateKey(%v) = false", err)
+		}
+	}
+
+	if isDuplicateKey(&mysqldriver.MySQLError{Number: 1048}) {
+		t.Fatal("non-duplicate MySQL error was classified as duplicate")
 	}
 }
 

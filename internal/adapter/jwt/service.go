@@ -55,7 +55,6 @@ func NewService(accessSecret, refreshSecret string, accessTTLMinutes, refreshTTL
 	}
 }
 
-// SetClock replaces the wall clock used to issue and validate tokens.
 func (s *Service) SetClock(value clock.Clock) {
 	if value != nil {
 		s.clock = value

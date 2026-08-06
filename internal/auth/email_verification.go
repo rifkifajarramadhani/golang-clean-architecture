@@ -19,6 +19,4 @@ type EmailVerificationResult struct {
 	FirstVerification bool
 }
 
-// VerificationRolePolicy decides the verified user's role while the
-// verification transaction still holds its consistency locks.
 type VerificationRolePolicy func(user.User, int64) (user.Role, error)

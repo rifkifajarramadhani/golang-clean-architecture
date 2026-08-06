@@ -96,8 +96,6 @@ func NewService(
 	}
 }
 
-// SetClock replaces the wall clock used by the service. It is intended for
-// deterministic tests and process-level composition.
 func (s *Service) SetClock(value clock.Clock) {
 	if value != nil {
 		s.clock = value
@@ -196,17 +194,12 @@ func (s *Service) VerifyEmail(ctx context.Context, token string) error {
 	}
 
 	if result != nil && result.FirstVerification && result.User != nil && s.welcome != nil {
-		// Verification is already committed. A welcome message is best-effort and
-		// can be retried independently without reverting the verified account.
 		_ = s.welcome.NotifyWelcome(ctx, *result.User)
 	}
 
 	return nil
 }
 
-// dummyPasswordHash is a valid bcrypt hash of an unused random value. Login
-// compares against it when no account matches so unknown and known emails take
-// the same time, preventing account enumeration via response timing.
 const dummyPasswordHash = "$2a$10$HT/u9JiywviXnwqC.hYgu.deWvDR0nBUC/HkEA.09dogRsMOiDmp6"
 
 func (s *Service) Login(ctx context.Context, email, password string) (*Tokens, error) {
@@ -280,9 +273,6 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*Tokens, er
 	}, nil
 }
 
-// Logout revokes the refresh token so it can no longer be used or rotated.
-// Unknown or already-revoked tokens are treated as success so logout stays
-// idempotent and reveals nothing about token validity.
 func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 	if refreshToken == "" {
 		return nil
