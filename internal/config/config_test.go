@@ -280,6 +280,19 @@ func TestNormalizeAuthConfigDefaults(t *testing.T) {
 	}
 }
 
+func TestNormalizeAuthConfigPreservesBootstrapEmailKey(t *testing.T) {
+	app := AppConfig{}
+	auth := AuthConfig{BootstrapAdminEmail: " \u1C89@EXAMPLE.COM "}
+
+	if err := normalizeAuthConfig(&app, &auth); err != nil {
+		t.Fatal(err)
+	}
+
+	if auth.BootstrapAdminEmail != "\u1C89@example.com" {
+		t.Fatalf("bootstrap admin email = %q", auth.BootstrapAdminEmail)
+	}
+}
+
 func TestValidateConfigRequiresProductionDatabasePassword(t *testing.T) {
 	cfg := Config{
 		App:      AppConfig{Port: "8080", Environment: "production"},

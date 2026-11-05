@@ -12,6 +12,8 @@ import (
 
 	"github.com/joho/godotenv"
 	"github.com/spf13/viper"
+
+	"github.com/rifkifajarramadhani/golang-clean-architecture/internal/user"
 )
 
 const (
@@ -267,7 +269,7 @@ func normalizeAuthConfig(app *AppConfig, auth *AuthConfig) error {
 		auth.RefreshTTLHours = 168
 	}
 
-	auth.BootstrapAdminEmail = strings.ToLower(strings.TrimSpace(auth.BootstrapAdminEmail))
+	auth.BootstrapAdminEmail = user.NormalizeEmail(auth.BootstrapAdminEmail)
 	if auth.BootstrapAdminEmail != "" {
 		address, err := stdmail.ParseAddress(auth.BootstrapAdminEmail)
 		if err != nil {

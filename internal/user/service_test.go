@@ -71,6 +71,44 @@ func TestServiceCreatesNormalizedUserWithHashedPassword(t *testing.T) {
 	}
 }
 
+func TestNormalizeEmailPreservesUnicode15Keys(t *testing.T) {
+	type emailCase struct {
+		name  string
+		email string
+		want  string
+	}
+
+	tests := []emailCase{
+		{name: "ASCII", email: " USER@Example.COM ", want: "user@example.com"},
+		{name: "existing Unicode casing", email: " ÉΣК@EXAMPLE.COM ", want: "éσк@example.com"},
+		{name: "existing compatibility letter", email: "\u212A@EXAMPLE.COM", want: "k@example.com"},
+		{name: "Cyrillic Tje", email: "\u1C89@EXAMPLE.COM", want: "\u1C89@example.com"},
+		{name: "Latin ram horn", email: "\uA7CB@EXAMPLE.COM", want: "\uA7CB@example.com"},
+		{name: "Latin S", email: "\uA7CC@EXAMPLE.COM", want: "\uA7CC@example.com"},
+		{name: "Latin pharyngeal", email: "\uA7CE@EXAMPLE.COM", want: "\uA7CE@example.com"},
+		{name: "Latin double thorn", email: "\uA7D2@EXAMPLE.COM", want: "\uA7D2@example.com"},
+		{name: "Latin double wynn", email: "\uA7D4@EXAMPLE.COM", want: "\uA7D4@example.com"},
+		{name: "Latin lambda", email: "\uA7DA@EXAMPLE.COM", want: "\uA7DA@example.com"},
+		{name: "Latin lambda stroke", email: "\uA7DC@EXAMPLE.COM", want: "\uA7DC@example.com"},
+	}
+
+	for r := '\U00010D50'; r <= '\U00010D65'; r++ {
+		tests = append(tests, emailCase{name: "Garay " + string(r), email: string(r) + "@EXAMPLE.COM", want: string(r) + "@example.com"})
+	}
+
+	for r := '\U00016EA0'; r <= '\U00016EB8'; r++ {
+		tests = append(tests, emailCase{name: "Beria Erfe " + string(r), email: string(r) + "@EXAMPLE.COM", want: string(r) + "@example.com"})
+	}
+
+	for _, test := range tests {
+		t.Run(test.name, func(t *testing.T) {
+			if got := NormalizeEmail(test.email); got != test.want {
+				t.Fatalf("NormalizeEmail(%q) = %q, want %q", test.email, got, test.want)
+			}
+		})
+	}
+}
+
 func TestServiceRejectsInvalidInput(t *testing.T) {
 	service := NewService(&repositoryFake{}, passwordFake{})
 	for _, account := range []*User{

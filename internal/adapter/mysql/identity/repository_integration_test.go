@@ -15,6 +15,50 @@ import (
 	"gorm.io/gorm"
 )
 
+func TestUserSecurityUnicodeEmailLookups(t *testing.T) {
+	dsn := os.Getenv("USER_TEST_MYSQL_DSN")
+	if dsn == "" {
+		t.Skip("USER_TEST_MYSQL_DSN is not set")
+	}
+
+	db, err := gorm.Open(gormmysql.Open(dsn), &gorm.Config{})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	repo := NewUserRepository(db)
+	ctx := context.Background()
+	suffix := uuid.NewString()
+	account := &user.User{
+		Username: "unicode_" + suffix[:8], Email: "\u1C89-" + suffix + "@example.com",
+		PendingEmail: "\uA7CB-" + suffix + "@example.com", Password: "hashed", Role: user.RoleUser, TokenVersion: 1,
+	}
+
+	if err := repo.Create(ctx, account); err != nil {
+		t.Fatal(err)
+	}
+
+	t.Cleanup(func() { _ = db.Where("id = ?", account.ID).Delete(&userModel{}).Error })
+
+	got, err := repo.GetUserByEmail(ctx, user.NormalizeEmail(account.Email))
+	if err != nil {
+		t.Fatalf("find existing email: %v", err)
+	}
+
+	if got.ID != account.ID {
+		t.Fatalf("user ID = %d, want %d", got.ID, account.ID)
+	}
+
+	got, err = repo.GetUserByEmailOrPending(ctx, user.NormalizeEmail(account.PendingEmail))
+	if err != nil {
+		t.Fatalf("find existing pending email: %v", err)
+	}
+
+	if got.ID != account.ID {
+		t.Fatalf("pending email user ID = %d, want %d", got.ID, account.ID)
+	}
+}
+
 func TestUserSecurityTransactions(t *testing.T) {
 	dsn := os.Getenv("USER_TEST_MYSQL_DSN")
 	if dsn == "" {

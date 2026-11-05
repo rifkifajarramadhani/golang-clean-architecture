@@ -109,6 +109,13 @@ an external dispatch cannot be rolled back if the later database commit fails.
 After verification commits, welcome delivery is best-effort and occurs only for
 First Verification.
 
+Email normalization preserves the Unicode 15.0.0 lowercase behavior used before
+the Go 1.27 upgrade. Characters unassigned in that version keep
+their original form. Active emails, Pending Emails, and the Bootstrap Admin
+email use the same normalization so this toolchain update does not change existing
+lookup keys. Changing this policy requires a coordinated data migration that
+checks for collisions between existing identities.
+
 ## Persistence Adapters
 
 Database adapters use a two-level layout:

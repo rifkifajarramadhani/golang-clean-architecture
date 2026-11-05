@@ -6,6 +6,9 @@ import (
 	"net/mail"
 	"regexp"
 	"strings"
+	"unicode"
+
+	"golang.org/x/text/unicode/rangetable"
 )
 
 const (
@@ -227,7 +230,15 @@ func ValidatePassword(password string) error {
 }
 
 func NormalizeEmail(email string) string {
-	return strings.ToLower(strings.TrimSpace(email))
+	assigned := rangetable.Assigned("15.0.0")
+
+	return strings.Map(func(character rune) rune {
+		if !unicode.Is(assigned, character) {
+			return character
+		}
+
+		return unicode.ToLower(character)
+	}, strings.TrimSpace(email))
 }
 
 func NormalizePagination(page, limit int) (int, int) {
