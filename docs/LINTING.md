@@ -7,11 +7,16 @@ Use this checklist to keep Go codebases healthy. Content is drawn from Effective
 - `gofmt`: Mandatory formatting; run before committing.
 - `goimports`: Formats and prunes/organizes imports.
 - `go vet`: Static analysis for suspicious constructs (format string mistakes, unreachable code, copylocks, etc.).
-- `golangci-lint`: Aggregates formatters and linters configured in `.golangci.yml`. Run via `make lint`.
+- `golangci-lint` v2.14.0: Aggregates formatters and linters configured in `.golangci.yml`. Run via `make lint`.
+- `govulncheck` v1.8.0: Scans application call paths for known vulnerabilities. Run via `make vuln`.
 - `go test -race`: Detects data races; run on packages with concurrency.
 - Comment policy test: Parses repository Go files and rejects prose comments;
   only Go directives, line directives, and the standard generated-code marker
   are accepted.
+
+Use Go 1.27.3 or later for native development. The pinned linter and
+vulnerability scanner support Go 1.27.3's export-data format. Older tools can
+fail to import standard-library packages even when the application builds.
 
 ### Formatters (golangci-lint)
 

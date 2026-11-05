@@ -4,7 +4,7 @@ This file provides contributor guidance for Claude Code in this repository.
 
 ## Project
 
-This is a Go 1.26.5 backend Template Source and Runnable Default. One `cmd/app`
+This is a Go 1.27.3 backend Template Source and Runnable Default. One `cmd/app`
 binary provides independently deployable `serve`, `worker`, and `scheduler`
 roles, a combined `all` role, and `queue` and `schedule` operator commands. The
 Runnable Default uses Fiber v3, GORM/MySQL, and the database-backed queue; Redis

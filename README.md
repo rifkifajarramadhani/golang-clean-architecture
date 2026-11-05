@@ -18,7 +18,7 @@ HTTP choices are `nethttp`, `fiber`, `gin`, and `echo`; databases are `mysql`, `
 
 ## Tech Stack
 
-- **Language:** Go 1.26.5
+- **Language:** Go 1.27.3
 - **HTTP Framework:** Fiber v3
 - **Database:** MySQL 8 (Docker)
 - **Queue:** MySQL database queue by default; Redis + Asynq is also supported
@@ -58,6 +58,10 @@ HTTP choices are `nethttp`, `fiber`, `gin`, and `echo`; databases are `mysql`, `
 - Docker
 - Docker Compose
 - Make (optional, for migration shortcuts)
+
+Native development requires Go 1.27.3 or later. See
+[the quality tooling requirements](docs/LINTING.md#baseline-tools) for the
+supported linter and vulnerability scanner versions.
 
 ## Configuration
 
