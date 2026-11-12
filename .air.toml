@@ -2,8 +2,10 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/main ./cmd/app"
-entrypoint = ["./tmp/main", "serve"]
+# Binary goes to the container's /tmp, not the bind mount, so each rebuild
+# does not write a large binary back to the host through the Docker VM.
+cmd = "go build -o /tmp/main ./cmd/app"
+entrypoint = ["/tmp/main", "serve"]
 include_ext = ["go"]
 exclude_dir = ["tmp", "vendor"]
 delay = 1000

@@ -374,7 +374,7 @@ curl http://localhost:8080/api/auth/me \
   and the [ADRs](docs/adr/) before changing shared template behavior.
 - API runs via Air using `.air.toml`.
 - Worker runs via Air using `.air.worker.toml`.
-- Build target for Air is `./cmd/app` and binary output is `tmp/main` (run with the `serve` subcommand).
+- Build target for Air is `./cmd/app` and binary output is `/tmp/main` inside the container (run with the `serve` subcommand).
 - Configuration supports environment-variable overrides such as `DATABASE_HOST`, `DATABASE_PASSWORD`, `AUTH_JWT_ACCESS_SECRET`, `AUTH_JWT_REFRESH_SECRET`, `QUEUE_DRIVER`, `REDIS_ADDRESS`, and `MAIL_PASSWORD`.
 - Password hashing and current-password checks are handled in the core service.
 - Refresh tokens are persisted as SHA-256 hashes in `refresh_tokens` table.
@@ -401,12 +401,12 @@ docker compose up -d --build
 make migrate args=up
 ```
 
-### Server not building `tmp/main`
+### Server not building `/tmp/main`
 
 Ensure `.air.toml` has:
 
-- `cmd = "go build -o ./tmp/main ./cmd/app"`
-- `entrypoint = ["./tmp/main", "serve"]`
+- `cmd = "go build -o /tmp/main ./cmd/app"`
+- `entrypoint = ["/tmp/main", "serve"]`
 
 Then restart the server:
 

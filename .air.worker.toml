@@ -2,11 +2,15 @@ root = "."
 tmp_dir = "tmp"
 
 [build]
-cmd = "go build -o ./tmp/worker ./cmd/app"
-entrypoint = ["./tmp/worker", "worker"]
+# Binary goes to the container's /tmp, not the bind mount, so each rebuild
+# does not write a large binary back to the host through the Docker VM.
+cmd = "go build -o /tmp/worker ./cmd/app"
+entrypoint = ["/tmp/worker", "worker"]
 include_ext = ["go"]
 exclude_dir = ["tmp", "vendor"]
-delay = 1000
+# Start after the server's build (delay 1000) has filled the shared Go cache,
+# so this build is mostly cache hits instead of a second full compile.
+delay = 5000
 
 [log]
 time = true

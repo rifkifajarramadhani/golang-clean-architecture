@@ -1,4 +1,8 @@
 volumes:
+  # Shared by the Go dev services so rebuilds reuse one compile cache
+  # (the Go cache is concurrency-safe) and it survives container recreates.
+  go_build_cache:
+  go_mod_cache:
   db_data:
 
 services:
@@ -12,6 +16,8 @@ services:
       - "8080:8080"
     volumes:
       - .:/app
+      - go_build_cache:/root/.cache/go-build
+      - go_mod_cache:/go/pkg/mod
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -31,6 +37,8 @@ services:
     command: air -c .air.worker.toml
     volumes:
       - .:/app
+      - go_build_cache:/root/.cache/go-build
+      - go_mod_cache:/go/pkg/mod
     env_file:
       - ${ENV_FILE:-.env}
     environment:
@@ -53,6 +61,8 @@ services:
     command: go run ./cmd/app scheduler
     volumes:
       - .:/app
+      - go_build_cache:/root/.cache/go-build
+      - go_mod_cache:/go/pkg/mod
     env_file:
       - ${ENV_FILE:-.env}
     environment:
